@@ -118,7 +118,7 @@ class PythonSandbox:
             r"exec\s*\(",
             r"open\s*\(",
             # r"file\s*\(",
-            r"input\s*\(",
+            # r"input\s*\(",
             # r"raw_input\s*\(",
             r"compile\s*\(",
             # r"execfile\s*\(",
@@ -184,7 +184,7 @@ class PythonSandbox:
             except Exception:
                 pass
 
-    async def execute_code(self, code: str) -> str:
+    async def execute_code(self, code: str, stdin: str | None = None) -> str:
         """Execute Python code in sandbox with safety checks"""
         with open("debug_output.txt", "a") as f:
             f.write(f"enter execution of code in the sand box\n")
@@ -264,10 +264,12 @@ except Exception as e:
                 # Use subprocess to run code
                 with open("debug_output.txt", "a") as f:
                     f.write(f"before launching subprocess\n")
+                stdin_arg = subprocess.PIPE if stdin is not None else None
                 process = subprocess.Popen(
                     ["python3", script_path],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
+                    stdin=stdin_arg,
                     env=env,
                     cwd=temp_dir,
                     text=True,
@@ -278,7 +280,11 @@ except Exception as e:
 
                 # Set timeout
                 try:
-                    stdout, stderr = process.communicate(timeout=self.timeout)
+                    if stdin is not None:
+                        input_data = stdin if stdin != "" else "\n"
+                        stdout, stderr = process.communicate(input=input_data, timeout=self.timeout)
+                    else:
+                        stdout, stderr = process.communicate(timeout=self.timeout)
 
                     if process.returncode == 0:
                         result = stdout.strip()
@@ -324,7 +330,10 @@ class ToolRegistry:
                     "description": "A tool for executing Python code in a safe sandbox environment.",
                     "parameters": {
                         "type": "object",
-                        "properties": {"code": {"type": "string", "description": "The Python code to execute"}},
+                        "properties": {
+                            "code": {"type": "string", "description": "The Python code to execute"},
+                            "stdin": {"type": "string", "description": "Optional standard input to pass. Use \"\" for a blank line"},
+                        },
                         "required": ["code"],
                     },
                 },
@@ -363,7 +372,8 @@ class ToolRegistry:
             return "Error: No code provided"
 
         # Execute code in sandbox
-        result = await self.python_sandbox.execute_code(code)
+        stdin_value = arguments.get("stdin", arguments.get("input", None))
+        result = await self.python_sandbox.execute_code(code, stdin=stdin_value)
         return result
 
 

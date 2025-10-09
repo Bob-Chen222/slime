@@ -121,8 +121,9 @@ def postprocess_predictions(prediction: str):
 
             if tool_name == "code_interpreter":
                 code = arguments.get("code", "")
+                stdin_value = arguments.get("stdin", arguments.get("input", None))
                 if code.strip():
-                    return "code", code
+                    return "code", {"code": code, "stdin": stdin_value}
         except (json.JSONDecodeError, KeyError, AttributeError):
             pass
 
@@ -131,14 +132,14 @@ def postprocess_predictions(prediction: str):
     code_match = re.search(code_pattern, prediction, re.DOTALL)
     if code_match:
         content = code_match.group(1).strip()
-        return "code", content
+        return "code", {"code": content, "stdin": None}
 
     # Finally check for ```python code blocks (lowest priority)
     python_code_pattern = r"```python\s*(.*?)\s*```"
     python_code_match = re.search(python_code_pattern, prediction, re.DOTALL)
     if python_code_match:
         content = python_code_match.group(1).strip()
-        return "code", content
+        return "code", {"code": content, "stdin": None}
 
     return None, ""
 
@@ -196,13 +197,17 @@ async def execute_predictions(prediction: str) -> str:
     if action == "code":
         # Content is already the Python code (extracted by
         # postprocess_predictions)
-        code = content.strip()
+        code = content["code"].strip() if isinstance(content, dict) else str(content).strip()
+        stdin_value = content.get("stdin") if isinstance(content, dict) else None
         if code:
             with open("debug_output.txt", "a") as f:
                 f.write(f"Executing code:\n{code}\n")
             # TODO BOB: this will create a deadlock!!!
             async with SEMAPHORE:
-                result = await tool_registry.execute_tool("code_interpreter", {"code": code})
+                args = {"code": code}
+                if stdin_value is not None:
+                    args["stdin"] = stdin_value
+                result = await tool_registry.execute_tool("code_interpreter", args)
             with open("debug_output.txt", "a") as f:
                 f.write(f"Code execution result:\n{result}\n")
             next_obs = f"\n\n<interpreter>\n{result}\n</interpreter>\n\n"

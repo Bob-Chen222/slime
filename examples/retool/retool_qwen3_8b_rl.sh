@@ -9,6 +9,9 @@ pkill -9 python
 sleep 3
 pkill -9 ray
 pkill -9 python
+pkill -9 redis
+
+set -ex
 
 set -ex
 
@@ -24,18 +27,18 @@ fi
 echo "HAS_NVLINK: $HAS_NVLINK (detected $NVLINK_COUNT NVLink references)"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-source "/root/workspace/slime/scripts/models/qwen3-4B.sh"
+source "/root/workspace/slime/scripts/models/qwen3-8B.sh"
 
 CKPT_ARGS=(
-   --hf-checkpoint /root/workspace/Qwen3-4B
-   --ref-load /root/workspace/Qwen3-4B-torch-dist
-   # --load /root/Qwen3-4B_slime/
-   --save /root/workspace/qwen3-4B-rl
+   --hf-checkpoint /root/workspace/Qwen3-8B_weights
+   --ref-load /root/workspace/Qwen3-8B-torch-dist
+   --save /root/workspace/Qwen3-8B-rl/qwen3-8B-rl-multi-turn/
    --save-interval 1
+   # --rotary-base 1000000
 )
 
 ROLLOUT_ARGS=(
-   --prompt-data /root/workspace/dapo-math-17k/dapo-math-17k.jsonl
+   --prompt-data /root/workspace/synthetic-APPS-10.jsonl
    --input-key prompt
    --label-key label
    --apply-chat-template
@@ -43,7 +46,7 @@ ROLLOUT_ARGS=(
    --reward-key score
    --num-rollout 1
    --rollout-batch-size 2
-   --n-samples-per-prompt 8
+   --n-samples-per-prompt 1
    --rollout-max-response-len 8192
    --rollout-temperature 0.8
 
@@ -53,7 +56,7 @@ ROLLOUT_ARGS=(
 
 EVAL_ARGS=(
    --eval-interval 1
-   --eval-prompt-data aime  /root/workspace/aime-2024/aime-2024.jsonl
+   --eval-prompt-data apps /root/workspace/synthetic-APPS-0125.jsonl
    --n-samples-per-eval-prompt 1
    --eval-max-response-len 8192
    --eval-top-p 0.7
@@ -97,8 +100,8 @@ OPTIMIZER_ARGS=(
 
 WANDB_ARGS=(
    --use-wandb
-   --wandb-project slime-dapo
-   --wandb-group qwen3-4B-test-multi-turn
+   --wandb-project slime-qwen3
+   --wandb-group qwen3-8B-test-multi-turn
    --wandb-key ${WANDB_KEY}
 )
 
@@ -119,9 +122,10 @@ MISC_ARGS=(
 )
 
 CUSTOM_ARGS=(
-   --custom-generate-function-path generate_with_retool.generate
-   --custom-rm-path generate_with_retool.reward_func
+   --custom-generate-function-path generate_with_code_execute.generate
+   --custom-rm-path generate_with_code_execute.reward_func
 )
+
 
 # launch the master node of ray in container
 export MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
@@ -130,7 +134,7 @@ ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus 4 --disable-usage-s
 # Build the runtime environment JSON with proper variable substitution
 RUNTIME_ENV_JSON="{
   \"env_vars\": {
-    \"PYTHONPATH\": \"/root/Megatron-LM/:${SCRIPT_DIR}:/root/workspace/slime\",
+    \"PYTHONPATH\": \"/root/Megatron-LM/:${SCRIPT_DIR}:/root/slime\",
     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
     \"NCCL_NVLS_ENABLE\": \"${HAS_NVLINK}\"
   }
@@ -153,4 +157,5 @@ ray job submit --address="http://127.0.0.1:8265" \
    ${EVAL_ARGS[@]} \
    ${SGLANG_ARGS[@]} \
    ${MISC_ARGS[@]} \
-   ${CUSTOM_ARGS[@]}
+   ${CUSTOM_ARGS[@]} 
+   #  ${DEBUG_ARGS[@]}

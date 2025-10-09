@@ -449,6 +449,12 @@ def _log_eval_rollout_data(rollout_id, args, data):
     for key in data.keys():
         rewards = data[key]["rewards"]
         log_dict[f"eval/{key}"] = sum(rewards) / len(rewards)
+        log_dict[f"eval/{key}-acc"] = data[key]["accuracy"]
+        log_dict[f"eval/{key}-precision"] = data[key]["precision"]
+        log_dict[f"eval/{key}-recall"] = data[key]["recall"]
+        log_dict[f"eval/{key}-tnr"] = data[key]["tnr"]
+        log_dict[f"eval/{key}-f1"] = data[key]["f1"]
+
         if "truncated" in data[key]:
             truncated = data[key]["truncated"]
             log_dict[f"eval/{key}-truncated_ratio"] = sum(truncated) / len(truncated)

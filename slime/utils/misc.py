@@ -12,6 +12,7 @@ def load_function(path):
     return getattr(module, attr)
 
 
+
 class SingletonMeta(type):
     """
     A metaclass for creating singleton classes.
@@ -24,3 +25,4 @@ class SingletonMeta(type):
             instance = super().__call__(*args, **kwargs)
             cls._instances[cls] = instance
         return cls._instances[cls]
+    

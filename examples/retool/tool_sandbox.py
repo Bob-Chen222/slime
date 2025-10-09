@@ -20,8 +20,8 @@ import psutil
 
 # Configuration for tool execution
 TOOL_CONFIGS = {
-    "max_turns": 16,
-    "max_tool_calls": 16,
+    "max_turns": 1,
+    "max_tool_calls": 1,
     "tool_concurrency": 32,  # Aggressive: 32 concurrent processes
     # Python interpreter settings
     "python_timeout": 120,  # 2 minutes for complex calculations
@@ -98,25 +98,17 @@ class PythonSandbox:
     def __init__(self, timeout: int = 10, memory_limit: str = "100MB"):
         self.timeout = timeout
         self.memory_limit = memory_limit
-        self.allowed_modules = {
-            "math",
-            "random",
-            "datetime",
-            "collections",
-            "itertools",
-            "functools",
-            "operator",
-            "statistics",
-            "decimal",
-            "fractions",
+
+        # allowed modules is too strict
+        self.not_allowed_modules = {
         }
 
     def _check_code_safety(self, code: str) -> tuple[bool, str]:
         """Check code safety by scanning for dangerous patterns"""
         # Check for dangerous operations
         dangerous_patterns = [
-            r"import\s+os",
-            r"import\s+sys",
+            # r"import\s+os",
+            # r"import\s+sys",
             r"import\s+subprocess",
             r"import\s+shutil",
             r"import\s+glob",
@@ -125,11 +117,11 @@ class PythonSandbox:
             r"eval\s*\(",
             r"exec\s*\(",
             r"open\s*\(",
-            r"file\s*\(",
+            # r"file\s*\(",
             r"input\s*\(",
-            r"raw_input\s*\(",
+            # r"raw_input\s*\(",
             r"compile\s*\(",
-            r"execfile\s*\(",
+            # r"execfile\s*\(",
             r"getattr\s*\(",
             r"setattr\s*\(",
             r"delattr\s*\(",
@@ -138,14 +130,14 @@ class PythonSandbox:
             r"locals\s*\(",
             r"vars\s*\(",
             r"dir\s*\(",
-            r"type\s*\(",
-            r"isinstance\s*\(",
-            r"issubclass\s*\(",
-            r"super\s*\(",
+            # r"type\s*\(",
+            # r"isinstance\s*\(",
+            # r"issubclass\s*\(",
+            # r"super\s*\(",
             r"property\s*\(",
-            r"staticmethod\s*\(",
-            r"classmethod\s*\(",
-            r"__\w+__",  # double underscore methods
+            # r"staticmethod\s*\(",
+            # r"classmethod\s*\(",
+            # r"__\w+__",  # double underscore methods
         ]
 
         for pattern in dangerous_patterns:
@@ -161,7 +153,7 @@ class PythonSandbox:
 
         all_imports = set(imports + froms)
         for imp in all_imports:
-            if imp not in self.allowed_modules:
+            if imp in self.not_allowed_modules:
                 return False, f"Import of '{imp}' is not allowed"
 
         return True, "Code is safe"
@@ -194,6 +186,8 @@ class PythonSandbox:
 
     async def execute_code(self, code: str) -> str:
         """Execute Python code in sandbox with safety checks"""
+        with open("debug_output.txt", "a") as f:
+            f.write(f"enter execution of code in the sand box\n")
         # Check memory usage before execution
         current_memory = get_memory_usage()
         if current_memory > TOOL_CONFIGS["max_memory_usage"]:
@@ -259,6 +253,8 @@ except Exception as e:
     error_msg = f"Error: {{str(e)}}\\nTraceback:\\n{{traceback.format_exc()}}"
     print(error_msg)"""
 
+        with open("debug_output.txt", "a") as f:
+            f.write(f"before creating safe environment\n")
         with self._create_safe_environment() as (script_path, env, temp_dir):
             # Write code to file
             with open(script_path, "w") as f:
@@ -266,6 +262,8 @@ except Exception as e:
 
             try:
                 # Use subprocess to run code
+                with open("debug_output.txt", "a") as f:
+                    f.write(f"before launching subprocess\n")
                 process = subprocess.Popen(
                     ["python3", script_path],
                     stdout=subprocess.PIPE,
@@ -274,6 +272,9 @@ except Exception as e:
                     cwd=temp_dir,
                     text=True,
                 )
+                with open("debug_output.txt", "a") as f:
+                    f.write(f"after launching subprocess\n")
+                    f.write(f"timeout is {self.timeout}\n")
 
                 # Set timeout
                 try:
@@ -296,6 +297,8 @@ except Exception as e:
             if cleanup_message:
                 print(f"Memory cleanup: {cleanup_message}")
 
+            with open("debug_output.txt", "a") as f:
+                f.write(f"exiting execution of code in the sand box\n")
             return result
 
 
@@ -338,11 +341,15 @@ class ToolRegistry:
 
     async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
         """Execute a tool call with the given arguments"""
+        with open("debug_output.txt", "a") as f:
+            f.write(f"execute_tool {tool_name} with arguments {arguments}\n")
         if tool_name not in self.tools:
             return f"Error: Tool '{tool_name}' not found"
 
         async with SEMAPHORE:
             if tool_name == "code_interpreter":
+                with open("debug_output.txt", "a") as f:
+                    f.write(f"before executing python code\n")
                 return await self._execute_python(arguments)
             else:
                 return f"Error: Tool '{tool_name}' not implemented"
@@ -350,6 +357,8 @@ class ToolRegistry:
     async def _execute_python(self, arguments: Dict[str, Any]) -> str:
         """Execute Python code using the sandbox"""
         code = arguments.get("code", "")
+        with open("debug_output.txt", "a") as f:
+            f.write("_execute_python\n")
         if not code.strip():
             return "Error: No code provided"
 

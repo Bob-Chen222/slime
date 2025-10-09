@@ -38,51 +38,53 @@ def train(args):
     for rollout_id in range(args.start_rollout_id, args.num_rollout):
         # TODO extract the duplicated eval logic
         if args.eval_interval is not None and rollout_id == 0:
+            with open("debug_output.txt", "a") as f:
+                f.write(f"Initial evaluation before training starts, rollout_id: {rollout_id}\n")
             ray.get(rollout_manager.eval.remote(rollout_id))
 
-        rollout_data_ref = ray.get(rollout_manager.generate.remote(rollout_id))
+        # rollout_data_ref = ray.get(rollout_manager.generate.remote(rollout_id))
 
-        if args.offload:
-            ray.get(rollout_manager.offload.remote())
+        # if args.offload:
+        #     ray.get(rollout_manager.offload.remote())
 
-        if args.use_critic:
-            critic_train_handle = critic_model.async_train(rollout_id, rollout_data_ref)
-            if rollout_id >= args.num_critic_only_steps:
-                ray.get(actor_model.async_train(rollout_id, rollout_data_ref))
-            ray.get(critic_train_handle)
-        else:
-            ray.get(actor_model.async_train(rollout_id, rollout_data_ref))
+        # if args.use_critic:
+        #     critic_train_handle = critic_model.async_train(rollout_id, rollout_data_ref)
+        #     if rollout_id >= args.num_critic_only_steps:
+        #         ray.get(actor_model.async_train(rollout_id, rollout_data_ref))
+        #     ray.get(critic_train_handle)
+        # else:
+        #     ray.get(actor_model.async_train(rollout_id, rollout_data_ref))
 
-        if args.save_interval is not None and (
-            (rollout_id + 1) % args.save_interval == 0
-            or (num_rollout_per_epoch is not None and (rollout_id + 1) % num_rollout_per_epoch == 0)
-        ):
-            actor_model.save_model(rollout_id)
-            if args.use_critic:
-                critic_model.save_model(rollout_id)
-            if args.rollout_global_dataset:
-                ray.get(rollout_manager.save.remote(rollout_id))
+        # if args.save_interval is not None and (
+        #     (rollout_id + 1) % args.save_interval == 0
+        #     or (num_rollout_per_epoch is not None and (rollout_id + 1) % num_rollout_per_epoch == 0)
+        # ):
+        #     actor_model.save_model(rollout_id)
+        #     if args.use_critic:
+        #         critic_model.save_model(rollout_id)
+        #     if args.rollout_global_dataset:
+        #         ray.get(rollout_manager.save.remote(rollout_id))
 
-        if args.offload:
-            if args.use_critic:
-                critic_model.offload()
-                if rollout_id >= args.num_critic_only_steps:
-                    actor_model.offload()
-            else:
-                actor_model.offload()
+        # if args.offload:
+        #     if args.use_critic:
+        #         critic_model.offload()
+        #         if rollout_id >= args.num_critic_only_steps:
+        #             actor_model.offload()
+        #     else:
+        #         actor_model.offload()
 
-            ray.get(rollout_manager.onload.remote(tags=[GPU_MEMORY_TYPE_WEIGHTS]))
+        #     ray.get(rollout_manager.onload.remote(tags=[GPU_MEMORY_TYPE_WEIGHTS]))
 
-        actor_model.update_weights()
+        # actor_model.update_weights()
 
-        if args.offload:
-            ray.get(rollout_manager.onload.remote(tags=[GPU_MEMORY_TYPE_KV_CACHE]))
+        # if args.offload:
+        #     ray.get(rollout_manager.onload.remote(tags=[GPU_MEMORY_TYPE_KV_CACHE]))
 
-        if args.eval_interval is not None and (
-            (rollout_id + 1) % args.eval_interval == 0
-            or (num_rollout_per_epoch is not None and (rollout_id + 1) % num_rollout_per_epoch == 0)
-        ):
-            ray.get(rollout_manager.eval.remote(rollout_id))
+        # if args.eval_interval is not None and (
+        #     (rollout_id + 1) % args.eval_interval == 0
+        #     or (num_rollout_per_epoch is not None and (rollout_id + 1) % num_rollout_per_epoch == 0)
+        # ):
+        #     ray.get(rollout_manager.eval.remote(rollout_id))
 
 
 if __name__ == "__main__":

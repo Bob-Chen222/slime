@@ -453,10 +453,48 @@ async def eval_rollout_single_dataset(
     data.sort(key=lambda sample: sample.index)
 
     reward_key = args.eval_reward_key or args.reward_key
+
+    # TODO (Bob): needs to add a utility function or organize this function better. only temp for now
+    tp = sum(
+        1
+        for sample in data
+        if "pred" in sample.reward and "gt" in sample.reward
+        and sample.reward["pred"] == 1 and sample.reward["gt"] == 1
+    )
+    tn = sum(
+        1
+        for sample in data
+        if "pred" in sample.reward and "gt" in sample.reward
+        and sample.reward["pred"] == 0 and sample.reward["gt"] == 0
+    )
+    fp = sum(
+        1
+        for sample in data
+        if "pred" in sample.reward and "gt" in sample.reward
+        and sample.reward["pred"] == 1 and sample.reward["gt"] == 0
+    )
+    fn = sum(
+        1
+        for sample in data
+        if "pred" in sample.reward and "gt" in sample.reward
+        and sample.reward["pred"] == 0 and sample.reward["gt"] == 1
+    )
+
+    accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    tnr = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
     return {
         name: {
             "rewards": [sample.reward if not reward_key else sample.reward[reward_key] for sample in data],
             "truncated": [sample.status == Sample.Status.TRUNCATED for sample in data],
+            "accuracy": accuracy,
+            "recall": recall,
+            "precision": precision,
+            "tnr": tnr,
+            "f1": f1,
         }
     }
 

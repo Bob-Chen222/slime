@@ -35,6 +35,9 @@ def get_args():
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     args.global_batch_size = int(os.environ.get("WORLD_SIZE", "1"))
 
+    print("wold size:" , world_size)
+    print("num_layers: ", args.num_layers)
+
     assert world_size <= args.num_layers, (
         f"World size {world_size} must be less than or equal to number of layers {args.num_layers}. "
         "You are using to much GPUs for this conversion."

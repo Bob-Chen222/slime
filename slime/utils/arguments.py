@@ -1107,6 +1107,10 @@ def slime_validate_args(args):
     if args.dump_details is not None:
         args.save_debug_rollout_data = f"{args.dump_details}/rollout_data/{{rollout_id}}.pt"
         args.save_debug_train_data = f"{args.dump_details}/train_data/{{rollout_id}}_{{rank}}.pt"
+        with open("debug_output.txt", "w") as f:
+            f.write(f"rollout_data will be saved to {args.save_debug_rollout_data}\n")
+            f.write(f"train_data will be saved to {args.save_debug_train_data}\n")
+
 
     if args.load_debug_rollout_data is not None:
         print(

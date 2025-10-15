@@ -213,6 +213,13 @@ async def generate_and_rm(
         else:
             sample = await generate(args, sample, sampling_params)
 
+    
+    # if evaluation:
+    #     # print out sample for eval
+    #     with open("eval_output.txt", "a") as f:
+    #         f.write("index: " + str(sample.index) + "\n")
+    #         f.write("prompt: " + str(sample.prompt) + "\n")
+    #         f.write("response: " + str(sample.response) + "\n")
     # for the rm that need the whole group, we will not do the rm here
     if args.group_rm:
         return sample
@@ -480,25 +487,25 @@ async def eval_rollout_single_dataset(
         1
         for sample in data
         if "pred" in sample.reward and "gt" in sample.reward
-        and sample.reward["pred"] == 1 and sample.reward["gt"] == 1
+        and sample.reward["pred"] == 1 and sample.reward["gt"] == 1 and not sample.status == Sample.Status.TRUNCATED
     )
     tn = sum(
         1
         for sample in data
         if "pred" in sample.reward and "gt" in sample.reward
-        and sample.reward["pred"] == 0 and sample.reward["gt"] == 0
+        and sample.reward["pred"] == 0 and sample.reward["gt"] == 0 and not sample.status == Sample.Status.TRUNCATED
     )
     fp = sum(
         1
         for sample in data
         if "pred" in sample.reward and "gt" in sample.reward
-        and sample.reward["pred"] == 1 and sample.reward["gt"] == 0
+        and sample.reward["pred"] == 1 and sample.reward["gt"] == 0 and not sample.status == Sample.Status.TRUNCATED
     )
     fn = sum(
         1
         for sample in data
         if "pred" in sample.reward and "gt" in sample.reward
-        and sample.reward["pred"] == 0 and sample.reward["gt"] == 1
+        and sample.reward["pred"] == 0 and sample.reward["gt"] == 1 and not sample.status == Sample.Status.TRUNCATED
     )
 
     accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0.0
@@ -506,6 +513,12 @@ async def eval_rollout_single_dataset(
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     tnr = tn / (tn + fp) if (tn + fp) > 0 else 0.0
     f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+    num_none = sum(1 for sample in data if sample.reward["pred"] is None)
+
+    with open("debug_output.txt", "w") as f:
+        f.write(f"TP: {tp}, TN: {tn}, FP: {fp}, FN: {fn}\n")
+        f.write(f"Accuracy: {accuracy}, Recall: {recall}, Precision: {precision}, TNR: {tnr}, F1: {f1}\n")
+        f.write(f"Truncated samples: {sum(1 for sample in data if sample.status == Sample.Status.TRUNCATED)}\n")
 
     return {
         name: {
@@ -516,6 +529,7 @@ async def eval_rollout_single_dataset(
             "precision": precision,
             "tnr": tnr,
             "f1": f1,
+            "ratio_none": num_none / len(data),
         }
     }
 

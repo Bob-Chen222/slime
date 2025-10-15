@@ -1,5 +1,13 @@
 import importlib
 
+opt_print=False
+
+def print_eval(str: str):
+    if not opt_print:
+        return
+    with open("eval_output.txt", "a") as f:
+        f.write(str + "\n")
+
 
 def load_function(path):
     """

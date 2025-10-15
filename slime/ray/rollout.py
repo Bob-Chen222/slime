@@ -241,27 +241,43 @@ class RolloutManager:
     def _convert_samples_to_train_data(self, samples: Union[list[Sample], list[list[Sample]]]):
         """
         Convert inference generated samples to training data.
+        Filter out truncated samples to exclude them from parameter updates.
         """
-        raw_rewards, rewards = self._post_process_rewards(samples)
+        # Filter out truncated samples from training
+        non_truncated_samples = [sample for sample in samples if sample.status != Sample.Status.TRUNCATED]
+        
+        # If all samples are truncated, return empty training data
+        if not non_truncated_samples:
+            return {
+                "tokens": [],
+                "response_lengths": [],
+                "rewards": [],
+                "raw_reward": [],
+                "truncated": [],
+                "sample_indices": [],
+                "loss_masks": [],
+            }
+        
+        raw_rewards, rewards = self._post_process_rewards(non_truncated_samples)
 
-        assert len(raw_rewards) == len(samples)
-        assert len(rewards) == len(samples)
+        assert len(raw_rewards) == len(non_truncated_samples)
+        assert len(rewards) == len(non_truncated_samples)
 
         train_data = {
-            "tokens": [sample.tokens for sample in samples],
-            "response_lengths": [sample.response_length for sample in samples],
+            "tokens": [sample.tokens for sample in non_truncated_samples],
+            "response_lengths": [sample.response_length for sample in non_truncated_samples],
             # some reward model, e.g. remote rm, may return multiple rewards,
             # we could use key to select the reward.
             "rewards": rewards,
             "raw_reward": raw_rewards,
-            "truncated": [1 if sample.status == Sample.Status.TRUNCATED else 0 for sample in samples],
-            "sample_indices": [sample.index for sample in samples],
+            "truncated": [1 if sample.status == Sample.Status.TRUNCATED else 0 for sample in non_truncated_samples],
+            "sample_indices": [sample.index for sample in non_truncated_samples],
         }
 
         # loss mask
         # TODO: compress the loss mask
         loss_masks = []
-        for sample in samples:
+        for sample in non_truncated_samples:
             # always instantiate loss_mask if not provided
             if sample.loss_mask is None:
                 sample.loss_mask = [1] * sample.response_length
@@ -272,19 +288,19 @@ class RolloutManager:
         train_data["loss_masks"] = loss_masks
 
         # overwriting the raw reward
-        if samples[0].metadata and "raw_reward" in samples[0].metadata:
-            train_data["raw_reward"] = [sample.metadata["raw_reward"] for sample in samples]
+        if non_truncated_samples[0].metadata and "raw_reward" in non_truncated_samples[0].metadata:
+            train_data["raw_reward"] = [sample.metadata["raw_reward"] for sample in non_truncated_samples]
 
         # For rollout buffer
-        if samples[0].metadata and "round_number" in samples[0].metadata:
-            train_data["round_number"] = [sample.metadata["round_number"] for sample in samples]
+        if non_truncated_samples[0].metadata and "round_number" in non_truncated_samples[0].metadata:
+            train_data["round_number"] = [sample.metadata["round_number"] for sample in non_truncated_samples]
 
         # Add rollout log probabilities for off-policy correction
-        if samples[0].rollout_log_probs is not None:
-            train_data["rollout_log_probs"] = [sample.rollout_log_probs for sample in samples]
+        if non_truncated_samples[0].rollout_log_probs is not None:
+            train_data["rollout_log_probs"] = [sample.rollout_log_probs for sample in non_truncated_samples]
 
-        if samples[0].train_metadata is not None:
-            train_data["metadata"] = [sample.train_metadata for sample in samples]
+        if non_truncated_samples[0].train_metadata is not None:
+            train_data["metadata"] = [sample.train_metadata for sample in non_truncated_samples]
 
         return train_data
 

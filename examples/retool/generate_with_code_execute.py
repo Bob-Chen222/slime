@@ -1,6 +1,7 @@
 # Adapted from https://github.com/volcengine/verl/blob/cb809d66e46dfd3342d008628891a14a054fa424/recipe/retool/retool.py
 import re
 from typing import Any, Dict, List, Optional, Union
+import json
 
 try:
     from jinja2 import Template
@@ -10,6 +11,7 @@ except ImportError:
 from slime.rollout.sglang_rollout import GenerateState
 from slime.utils.http_utils import post
 from slime.utils.types import Sample
+from slime.utils.misc import print_eval
 
 # Import reward models
 try:
@@ -93,53 +95,49 @@ def format_conversation_with_tools(
     return formatted_text
 
 
-def postprocess_predictions(prediction: str):
-    """Extract action and content from prediction string"""
-    # Check for Answer: \boxed{...} format (only format we need for math_dapo)
-    # Use a more robust regex that handles nested braces
+def postprocess_predictions(prediction: str) -> tuple[Optional[str], Union[str, Dict[str, Any], List[tuple[str, Dict[str, Any]]]]]:
+    """Extract actions and content (supports multiple <tool_call> blocks)"""
+    # 1. Check for Answer:\boxed{...}
     answer_pattern = r"Answer:\s*\\boxed\{((?:[^{}]|\{[^{}]*\})*)\}"
     answer_match = re.search(answer_pattern, prediction, re.DOTALL)
     if answer_match:
-        content = answer_match.group(1).strip()
-        return "answer", content
+        return "answer", answer_match.group(1).strip()
 
-    # Then check for <tool_call> tags (new format from Jinja2 template)
+    # 2. Check for one or more <tool_call> blocks
     tool_call_pattern = r"<tool_call>\s*(\{.*?\})\s*</tool_call>"
-    tool_call_match = re.search(tool_call_pattern, prediction, re.DOTALL)
-    if tool_call_match:
-        try:
-            import json
+    tool_call_matches = re.findall(tool_call_pattern, prediction, re.DOTALL)
 
-            # Clean up the JSON string by removing newlines and extra
-            # whitespace
-            json_str = tool_call_match.group(1)
-            # Replace newlines in string values with \n
-            json_str = json_str.replace("\n", "\\n")
-            tool_call_data = json.loads(json_str)
-            tool_name = tool_call_data.get("name")
-            arguments = tool_call_data.get("arguments", {})
+    if tool_call_matches:
+        results = []
+        for json_str in tool_call_matches:
+            try:
+                json_str = json_str.replace("\n", "\\n")
+                tool_call_data = json.loads(json_str)
+                tool_name = tool_call_data.get("name")
+                arguments = tool_call_data.get("arguments", {})
 
-            if tool_name == "code_interpreter":
-                code = arguments.get("code", "")
-                stdin_value = arguments.get("stdin", arguments.get("input", None))
-                if code.strip():
-                    return "code", {"code": code, "stdin": stdin_value}
-        except (json.JSONDecodeError, KeyError, AttributeError):
-            pass
+                if tool_name == "code_interpreter":
+                    code = arguments.get("code", "").strip()
+                    stdin_value = arguments.get("stdin", arguments.get("input", None))
+                    if code:
+                        results.append(("code", {"code": code, "stdin": stdin_value}))
+            except (json.JSONDecodeError, KeyError, AttributeError):
+                continue
 
-    # Then check for <code> tags
-    code_pattern = r"<code>(.*?)</code>"
-    code_match = re.search(code_pattern, prediction, re.DOTALL)
+        # If multiple tool calls were found, return all of them
+        if results:
+            return "multi_code", results
+        # Otherwise, fall through
+
+    # 3. <code>...</code>
+    code_match = re.search(r"<code>(.*?)</code>", prediction, re.DOTALL)
     if code_match:
-        content = code_match.group(1).strip()
-        return "code", {"code": content, "stdin": None}
+        return "code", {"code": code_match.group(1).strip(), "stdin": None}
 
-    # Finally check for ```python code blocks (lowest priority)
-    python_code_pattern = r"```python\s*(.*?)\s*```"
-    python_code_match = re.search(python_code_pattern, prediction, re.DOTALL)
+    # 4. ```python ... ```
+    python_code_match = re.search(r"```python\s*(.*?)\s*```", prediction, re.DOTALL)
     if python_code_match:
-        content = python_code_match.group(1).strip()
-        return "code", {"code": content, "stdin": None}
+        return "code", {"code": python_code_match.group(1).strip(), "stdin": None}
 
     return None, ""
 
@@ -186,35 +184,56 @@ def postprocess_responses(resp: str) -> str:
     return resp
 
 
-async def execute_predictions(prediction: str) -> str:
+async def execute_predictions(prediction: str, max_tools_calls_per_turn = 4) -> str:
     """Execute predictions and return results"""
-    with open("debug_output.txt", "a") as f:
-        f.write(f"Executing prediction:\n{prediction}\n")
+    # print_eval(f"Executing prediction: {prediction}")
     action, content = postprocess_predictions(prediction)
-    with open("debug_output.txt", "a") as f:
-        f.write(f"Postprocessed prediction:\nAction: {action}\n")
 
     if action == "code":
         # Content is already the Python code (extracted by
         # postprocess_predictions)
         code = content["code"].strip() if isinstance(content, dict) else str(content).strip()
         stdin_value = content.get("stdin") if isinstance(content, dict) else None
+        # print_eval(f"Extracted code: {code}")
+        # print_eval(f"Extracted stdin: {stdin_value}")
         if code:
-            with open("debug_output.txt", "a") as f:
-                f.write(f"Executing code:\n{code}\n")
             # TODO BOB: this will create a deadlock!!!
             async with SEMAPHORE:
                 args = {"code": code}
                 if stdin_value is not None:
                     args["stdin"] = stdin_value
                 result = await tool_registry.execute_tool("code_interpreter", args)
-            with open("debug_output.txt", "a") as f:
-                f.write(f"Code execution result:\n{result}\n")
+                # print_eval(f"Execution result: {result}")
+
             next_obs = f"\n\n<interpreter>\n{result}\n</interpreter>\n\n"
             done = False
         else:
             next_obs = "\n\n<interpreter>\nError: No Python code found" "\n</interpreter>\n\n"
             done = False
+    elif action == "multi_code":
+        # only execute up to max_tools_calls_per_turn
+        results = []
+        for i, (act, cont) in enumerate(content):
+            if i >= max_tools_calls_per_turn:
+                print_eval(f"Maximum tool call per turn {max_tools_calls_per_turn} reached, skipping remaining calls.")
+                break
+            if act == "code":
+                code = cont["code"].strip() if isinstance(cont, dict) else str(cont).strip()
+                stdin_value = cont.get("stdin") if isinstance(cont, dict) else None
+                # print_eval(f"Extracted code: {code}")
+                # print_eval(f"Extracted stdin: {stdin_value}")
+                if code:
+                    async with SEMAPHORE:
+                        args = {"code": code}
+                        if stdin_value is not None:
+                            args["stdin"] = stdin_value
+                        result = await tool_registry.execute_tool("code_interpreter", args)
+                        # print_eval(f"Execution result: {result}")
+                    results.append(f"<interpreter>\n{result}\n</interpreter>")
+                else:
+                    results.append("<interpreter>\nError: No Python code found\n</interpreter>")
+        next_obs = "\n\n".join(results) + "\n\n"
+        done = False
     elif action == "answer":
         next_obs = ""
         done = True
@@ -228,14 +247,16 @@ async def execute_predictions(prediction: str) -> str:
         )
         done = False
 
-    with open("debug_output.txt", "a") as f:
-        f.write(f"Next observation:\n{next_obs}\nDone: {done}\n")
     return next_obs, done
 
 
 async def generate(args, sample: Sample, sampling_params) -> Sample:
     """Custom generation function supporting tool calls"""
     assert not args.partial_rollout, "Partial rollout is not supported for " "this function at the moment."
+
+    print_eval(f"=== New Sample Index {sample.index} ===")
+    print_eval("starting generation...")
+    prompt = sample.prompt
 
     state = GenerateState(args)
     url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}/generate"
@@ -249,18 +270,43 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
     response_token_ids = []
     loss_masks = []
     tool_call_count = 0  # Track actual tool call rounds
+    output = None
 
     for turn in range(TOOL_CONFIGS["max_turns"]):
+        print_eval(f"=== Turn {turn} ===")
+        print_eval(f"response so far: {response}")
+
+        ctx_len = 40960
+        # if not ctx_len or ctx_len <= 0:
+        #     ctx_len = getattr(state.tokenizer, "model_max_length", 40960)
+
+        current_len = len(state.tokenizer(prompt + response, add_special_tokens=False)["input_ids"])
+        allowed_new = max(0, ctx_len - current_len)
+
+        current_sampling_params = sampling_params.copy()
+        max_new = current_sampling_params.get("max_new_tokens", None)
+        if max_new is None:
+            current_sampling_params["max_new_tokens"] = allowed_new
+        else:
+            current_sampling_params["max_new_tokens"] = max(0, min(max_new, allowed_new))
+
+        if current_sampling_params["max_new_tokens"] == 0:
+            # No room to generate more tokens
+            sample.status = Sample.Status.TRUNCATED
+            print_eval("Context length limit reached, stopping generation.")
+            break
+            
         # Simple: just send prompt + response
         payload = {
             "text": prompt + response,
-            "sampling_params": sampling_params,
+            # "sampling_params": sampling_params,
+            "sampling_params": current_sampling_params,
         }
 
         # Log payload to wandb for debugging
         try:
             import wandb
-            # import weave
+            import weave
 
             if wandb.run is not None:
                 # Count available tools (from tool_specs)
@@ -289,9 +335,7 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
 
         cur_response = output["text"]
         cur_response = postprocess_responses(cur_response)
-        with open("debug_output.txt", "a") as f:
-            f.write(f"Turn {turn}:\n")
-            f.write(f"cur_response: {cur_response}\n")
+        print_eval(f"====== Post-processed cur_response ======: {cur_response}")
 
         # Record current response tokens
         cur_response_token_ids = state.tokenizer(cur_response, add_special_tokens=False)["input_ids"]
@@ -301,11 +345,12 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
 
         # Check length limit
         if output["meta_info"]["finish_reason"]["type"] == "length":
+            print_eval("Length limit reached during generation.")
             break
 
-        with open("debug_output.txt", "a") as f:
-            f.write(f"Executing predictions...\n")
-        next_obs, done = await execute_predictions(cur_response)
+        next_obs, done = await execute_predictions(cur_response, max_tools_calls_per_turn=TOOL_CONFIGS["max_tool_calls_per_turn"])
+        print_eval(f"Next observation: {next_obs}")
+        print_eval(f"Done: {done}")
         if done:
             break
 
@@ -316,13 +361,14 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
 
         assert next_obs != "", "Next observation should not be empty."
         obs_tokens_ids = state.tokenizer(next_obs, add_special_tokens=False)["input_ids"]
+        print_eval(f"before obs, response is now: {response}")
         response += next_obs
         response_token_ids += obs_tokens_ids
         loss_masks += [0] * len(obs_tokens_ids)
 
         # Check if maximum tool call count reached
-        if tool_call_count >= TOOL_CONFIGS["max_tool_calls"]:
-            break
+        # if tool_call_count >= TOOL_CONFIGS["max_tool_calls"]:
+        #     break
 
     # Set sample attributes
     sample.tokens = prompt_tokens_ids + response_token_ids
@@ -337,6 +383,9 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
 
     # Store tool call count for reward calculation
     sample.tool_call_count = tool_call_count
+
+    if output is None:
+        return sample
 
     # Set status
     match output["meta_info"]["finish_reason"]["type"]:
@@ -376,9 +425,6 @@ def compute_score(
     try:
         pred = int(remove_boxed(last_boxed_only_string(solution_str)))
     except Exception as e:
-        with open("compute_score_log.txt", "a") as f:
-            f.write(f"Error in parsing prediction: {e}\n")
-            f.write(f"solution_str: {solution_str}\n")
         pred = None
     correct = pred == ground_truth
 
@@ -404,7 +450,7 @@ async def reward_func(args, sample, **kwargs):
     ground_truth = sample.label if sample.label is not None else ""
 
     # Get tool call count as num_turns
-    num_turns = getattr(sample, "tool_call_count", 0)
+    # num_turns = getattr(sample, "tool_call_count", 0)
 
     # use \\boxed{...} answer
     result = compute_score(solution_str, ground_truth, strict_box_verify=True)

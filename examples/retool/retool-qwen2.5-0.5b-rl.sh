@@ -30,32 +30,32 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 source "/root/workspace/slime/scripts/models/qwen2.5-0.5B.sh"
 
 CKPT_ARGS=(
-   --hf-checkpoint /root/workspace/Qwen2.5-0.5B-weights
-   --ref-load /root/workspace/Qwen2.5-0.5B-torch-dist
-   --save /root/workspace/Qwen2.5-0.5B-rl/qwen2.5-0.5B-rl-multi-turn/
+   --hf-checkpoint /root/workspace/Qwen-weights/Qwen2.5-0.5B-weights
+   --ref-load /root/workspace/Qwen-weights/Qwen2.5-0.5B-torch-dist
+   --save /root/workspace/Qwen-weights/Qwen2.5-0.5B-rl/qwen2.5-0.5B-rl-multi-turn/
    --save-interval 1
    # --rotary-base 1000000
 )
 
 ROLLOUT_ARGS=(
-   --prompt-data /root/workspace/synthetic-APPS-emh30.jsonl
+   --prompt-data /root/workspace/synthetic-APPS-10.jsonl
    --input-key prompt
    --label-key label
    --apply-chat-template
    --rollout-shuffle
    --reward-key score
    --num-rollout 1
-   --rollout-batch-size 2
+   --rollout-batch-size 4
    --n-samples-per-prompt 1
-   --rollout-max-response-len 8192
+   --rollout-max-response-len 4096
    --rollout-temperature 0.8
 
-   --global-batch-size 2
+   --global-batch-size 4
    --balance-data
 )
 
 EVAL_ARGS=(
-   --eval-interval 1
+   --eval-interval 5
    --eval-prompt-data apps /root/workspace/synthetic-APPS-emh30.jsonl
    --n-samples-per-eval-prompt 1
    --eval-max-response-len 1024
@@ -89,6 +89,21 @@ GRPO_ARGS=(
    --eps-clip-high 0.28
 )
 
+PPO_ARGS=(
+    --advantage-estimator ppo
+    --eps-clip 0.2
+    --eps-clip-high 0.28
+    --gamma 0.99
+    --lambd 0.95
+    --normalize-advantages
+    --critic-lr 5e-6
+    --entropy-coef 0.01
+    --use-kl-loss
+    --kl-loss-coef 0.1
+    --kl-loss-type low_var_kl
+)
+
+
 OPTIMIZER_ARGS=(
    --optimizer adam
    --lr 1e-6
@@ -119,6 +134,7 @@ MISC_ARGS=(
    --attention-softmax-in-fp32
    # need to comment this when using model with MLA
    --attention-backend flash
+   --use-dynamic-batch-size
 )
 
 CUSTOM_ARGS=(
@@ -162,5 +178,5 @@ ray job submit --address="http://127.0.0.1:8265" \
    ${EVAL_ARGS[@]} \
    ${SGLANG_ARGS[@]} \
    ${MISC_ARGS[@]} \
-   ${CUSTOM_ARGS[@]} \
-   ${DEBUG_ARGS[@]}
+   ${CUSTOM_ARGS[@]} 
+   # ${DEBUG_ARGS[@]}

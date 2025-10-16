@@ -253,6 +253,7 @@ async def execute_predictions(prediction: str, max_tools_calls_per_turn = 4) -> 
 async def generate(args, sample: Sample, sampling_params) -> Sample:
     """Custom generation function supporting tool calls"""
     assert not args.partial_rollout, "Partial rollout is not supported for " "this function at the moment."
+    assert sample is not None and isinstance(sample, Sample), "Sample must be provided and be an instance of Sample class."
 
     print_eval(f"=== New Sample Index {sample.index} ===")
     print_eval("starting generation...")

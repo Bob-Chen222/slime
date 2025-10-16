@@ -216,12 +216,6 @@ async def generate_and_rm(
             sample = await generate(args, sample, sampling_params)
 
     
-    # if evaluation:
-    #     # print out sample for eval
-    #     with open("eval_output.txt", "a") as f:
-    #         f.write("index: " + str(sample.index) + "\n")
-    #         f.write("prompt: " + str(sample.prompt) + "\n")
-    #         f.write("response: " + str(sample.response) + "\n")
     # for the rm that need the whole group, we will not do the rm here
     if args.group_rm:
         return sample

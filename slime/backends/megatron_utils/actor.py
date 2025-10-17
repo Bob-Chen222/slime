@@ -287,6 +287,7 @@ class MegatronTrainRayActor(TrainRayActor):
     def train_actor(self, rollout_id: int, rollout_data: RolloutBatch) -> None:
         # Create data iterator for log_probs and train.
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, rollout_data)
+        assert len(num_microbatches) > 0
 
         with timer("train"):
             if self.args.compute_advantages_and_returns:

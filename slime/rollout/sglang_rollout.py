@@ -2,8 +2,11 @@ import asyncio
 import base64
 import copy
 import io
+import os
 from argparse import Namespace
 from typing import Any, Callable, Union
+from pathlib import Path
+import torch
 
 from PIL import Image
 from tqdm import tqdm
@@ -492,6 +495,8 @@ async def eval_rollout_single_dataset(
 
     reward_key = args.eval_reward_key or args.reward_key
 
+    _save_debug_rollout_data(args, data, rollout_id)
+
     # TODO (Bob): needs to add a utility function or organize this function better. only temp for now
     tp = sum(
         1
@@ -524,12 +529,9 @@ async def eval_rollout_single_dataset(
     tnr = tn / (tn + fp) if (tn + fp) > 0 else 0.0
     f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
     num_none = sum(1 for sample in data if sample.reward["pred"] is None)
-
-    with open("debug_output.txt", "w") as f:
-        f.write(f"TP: {tp}, TN: {tn}, FP: {fp}, FN: {fn}\n")
-        f.write(f"Accuracy: {accuracy}, Recall: {recall}, Precision: {precision}, TNR: {tnr}, F1: {f1}\n")
-        f.write(f"Truncated samples: {sum(1 for sample in data if sample.status == Sample.Status.TRUNCATED)}\n")
-
+    average_response_length = sum(sample.response_length for sample in data if not sample.status == Sample.Status.TRUNCATED) / len(data)
+    average_tool_call_count = sum(sample.tool_call_count for sample in data if not sample.status == Sample.Status.TRUNCATED) / len(data)
+    average_turn_finished = sum(sample.turn_finished for sample in data if not sample.status == Sample.Status.TRUNCATED) / len(data)
     return {
         name: {
             "rewards": [sample.reward if not reward_key else sample.reward[reward_key] for sample in data],
@@ -540,11 +542,30 @@ async def eval_rollout_single_dataset(
             "tnr": tnr,
             "f1": f1,
             "ratio_none": num_none / len(data),
+            "average_response_length": average_response_length,
+            "average_tool_call_count": average_tool_call_count,
+            "average_turn_finished": average_turn_finished,
         }
     }
 
+def _save_debug_rollout_data(args, data, rollout_id):
+        # TODO to be refactored (originally Buffer._set_data)
+        if (path_template := args.save_eval_debug_rollout_data) is not None:
+            path = Path(path_template.format(rollout_id=rollout_id))
+            print(f"Save eval debug rollout data to {path}")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(
+                dict(
+                    rollout_id=rollout_id,
+                    samples=[sample.to_dict() for sample in data],
+                ),
+                path,
+            )
+
+
 
 # TODO remove this temp function
+# BOB: this is the rollout function as default
 def generate_rollout(
     args: Namespace, rollout_id: int, data_buffer: Any, evaluation: bool = False
 ) -> Union[RolloutFnTrainOutput, RolloutFnEvalOutput]:

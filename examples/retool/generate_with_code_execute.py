@@ -384,6 +384,7 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
 
     # Store tool call count for reward calculation
     sample.tool_call_count = tool_call_count
+    sample.turn_finished = turn + 1
 
     if output is None:
         return sample

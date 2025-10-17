@@ -32,7 +32,7 @@ source "/root/workspace/slime/scripts/models/qwen2.5-0.5B.sh"
 CKPT_ARGS=(
    --hf-checkpoint /root/workspace/Qwen-weights/Qwen2.5-0.5B-weights
    --ref-load /root/workspace/Qwen-weights/Qwen2.5-0.5B-torch-dist
-   --save /root/workspace/Qwen-weights/Qwen2.5-0.5B-rl/qwen2.5-0.5B-rl-multi-turn/
+   --save /root/workspace/Qwen-weights/Qwen2.5-0.5B-iter
    --save-interval 1
    # --rotary-base 1000000
 )
@@ -44,21 +44,21 @@ ROLLOUT_ARGS=(
    --apply-chat-template
    --rollout-shuffle
    --reward-key score
-   --num-rollout 1
+   --num-rollout 5
    --rollout-batch-size 4
-   --n-samples-per-prompt 1
-   --rollout-max-response-len 4096
-   --rollout-temperature 0.8
+   --n-samples-per-prompt 8
+   --rollout-max-response-len 8192
+   --rollout-temperature 0.7
 
    --global-batch-size 4
    --balance-data
 )
 
 EVAL_ARGS=(
-   --eval-interval 5
+   --eval-interval 1
    --eval-prompt-data apps /root/workspace/synthetic-APPS-emh30.jsonl
    --n-samples-per-eval-prompt 1
-   --eval-max-response-len 1024
+   --eval-max-response-len 4096
    --eval-top-p 0.7
 )
 
@@ -74,8 +74,8 @@ PERF_ARGS=(
    --recompute-method uniform
    --recompute-num-layers 1
 
-   # --micro-batch-size 1
-   --use-dynamic-batch-size
+   --micro-batch-size 1
+   # --use-dynamic-batch-size
    --max-tokens-per-gpu 1024
 )
 
@@ -134,12 +134,12 @@ MISC_ARGS=(
    --attention-softmax-in-fp32
    # need to comment this when using model with MLA
    --attention-backend flash
-   --use-dynamic-batch-size
 )
 
 CUSTOM_ARGS=(
    --custom-generate-function-path generate_with_code_execute.generate
    --custom-rm-path generate_with_code_execute.reward_func
+   --save-eval-debug-rollout-data /root/workspace/logs/eval_{rollout_id}.pt
 )
 
 DEBUG_ARGS=(

@@ -841,6 +841,15 @@ def get_slime_extra_args_provider(add_custom_arguments=None):
                 default=None,
                 help=("Dump all details of training for post-hoc analysis and visualization."),
             )
+            parser.add_argument(
+                "--save-eval-debug-rollout-data",
+                type=str,
+                default=None,
+                help=(
+                    "Save the eval rollout data to this path for debugging. "
+                    "The file will be saved to `save_eval_debug_rollout_data.format(eval_dataset_name, rollout_id)`."
+                ),
+            )
             return parser
 
         def add_network_arguments(parser):
@@ -1136,9 +1145,6 @@ def slime_validate_args(args):
     if args.dump_details is not None:
         args.save_debug_rollout_data = f"{args.dump_details}/rollout_data/{{rollout_id}}.pt"
         args.save_debug_train_data = f"{args.dump_details}/train_data/{{rollout_id}}_{{rank}}.pt"
-        with open("debug_output.txt", "w") as f:
-            f.write(f"rollout_data will be saved to {args.save_debug_rollout_data}\n")
-            f.write(f"train_data will be saved to {args.save_debug_train_data}\n")
 
 
     if args.load_debug_rollout_data is not None:

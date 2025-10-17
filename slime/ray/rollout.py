@@ -26,6 +26,8 @@ from .utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST, Lock
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+step_global=0
+
 
 @ray.remote
 class RolloutManager:
@@ -186,43 +188,27 @@ class RolloutManager:
     def _convert_samples_to_train_data(self, samples: Union[list[Sample], list[list[Sample]]]):
         """
         Convert inference generated samples to training data.
-        Filter out truncated samples to exclude them from parameter updates.
         """
-        # Filter out truncated samples from training
-        non_truncated_samples = [sample for sample in samples if sample.status != Sample.Status.TRUNCATED]
-        
-        # If all samples are truncated, return empty training data
-        if not non_truncated_samples:
-            return {
-                "tokens": [],
-                "response_lengths": [],
-                "rewards": [],
-                "raw_reward": [],
-                "truncated": [],
-                "sample_indices": [],
-                "loss_masks": [],
-            }
-        
-        raw_rewards, rewards = self._post_process_rewards(non_truncated_samples)
+        raw_rewards, rewards = self._post_process_rewards(samples)
 
-        assert len(raw_rewards) == len(non_truncated_samples)
-        assert len(rewards) == len(non_truncated_samples)
+        assert len(raw_rewards) == len(samples)
+        assert len(rewards) == len(samples)
 
         train_data = {
-            "tokens": [sample.tokens for sample in non_truncated_samples],
-            "response_lengths": [sample.response_length for sample in non_truncated_samples],
+            "tokens": [sample.tokens for sample in samples],
+            "response_lengths": [sample.response_length for sample in samples],
             # some reward model, e.g. remote rm, may return multiple rewards,
             # we could use key to select the reward.
             "rewards": rewards,
             "raw_reward": raw_rewards,
-            "truncated": [1 if sample.status == Sample.Status.TRUNCATED else 0 for sample in non_truncated_samples],
-            "sample_indices": [sample.index for sample in non_truncated_samples],
+            "truncated": [1 if sample.status == Sample.Status.TRUNCATED else 0 for sample in samples],
+            "sample_indices": [sample.index for sample in samples],
         }
 
         # loss mask
         # TODO: compress the loss mask
         loss_masks = []
-        for sample in non_truncated_samples:
+        for sample in samples:
             # always instantiate loss_mask if not provided
             if sample.loss_mask is None:
                 sample.loss_mask = [1] * sample.response_length
@@ -233,19 +219,19 @@ class RolloutManager:
         train_data["loss_masks"] = loss_masks
 
         # overwriting the raw reward
-        if non_truncated_samples[0].metadata and "raw_reward" in non_truncated_samples[0].metadata:
-            train_data["raw_reward"] = [sample.metadata["raw_reward"] for sample in non_truncated_samples]
+        if samples[0].metadata and "raw_reward" in samples[0].metadata:
+            train_data["raw_reward"] = [sample.metadata["raw_reward"] for sample in samples]
 
         # For rollout buffer
-        if non_truncated_samples[0].metadata and "round_number" in non_truncated_samples[0].metadata:
-            train_data["round_number"] = [sample.metadata["round_number"] for sample in non_truncated_samples]
+        if samples[0].metadata and "round_number" in samples[0].metadata:
+            train_data["round_number"] = [sample.metadata["round_number"] for sample in samples]
 
         # Add rollout log probabilities for off-policy correction
-        if non_truncated_samples[0].rollout_log_probs is not None:
-            train_data["rollout_log_probs"] = [sample.rollout_log_probs for sample in non_truncated_samples]
+        if samples[0].rollout_log_probs is not None:
+            train_data["rollout_log_probs"] = [sample.rollout_log_probs for sample in samples]
 
-        if non_truncated_samples[0].train_metadata is not None:
-            train_data["metadata"] = [sample.train_metadata for sample in non_truncated_samples]
+        if samples[0].train_metadata is not None:
+            train_data["metadata"] = [sample.train_metadata for sample in samples]
 
         return train_data
 
@@ -451,6 +437,9 @@ def _log_eval_rollout_data(rollout_id, args, data):
         log_dict[f"eval/{key}-recall"] = data[key]["recall"]
         log_dict[f"eval/{key}-tnr"] = data[key]["tnr"]
         log_dict[f"eval/{key}-f1"] = data[key]["f1"]
+        log_dict[f"eval/{key}-average_response_length"] = data[key]["average_response_length"]
+        log_dict[f"eval/{key}-average_tool_call_count"] = data[key]["average_tool_call_count"]
+        log_dict[f"eval/{key}-average_turn_finished"] = data[key]["average_turn_finished"]
 
         if "truncated" in data[key]:
             truncated = data[key]["truncated"]
@@ -463,9 +452,11 @@ def _log_eval_rollout_data(rollout_id, args, data):
         if not args.wandb_always_use_train_step
         else rollout_id * args.rollout_batch_size * args.n_samples_per_prompt // args.global_batch_size
     )
+    global step_global
     if args.use_wandb:
-        log_dict["eval/step"] = step
+        log_dict["eval/step"] = step_global 
         wandb.log(log_dict)
+        step_global += 1
 
     if args.use_tensorboard:
         from slime.utils.tensorboard_utils import _TensorboardAdapter

@@ -284,6 +284,7 @@ def train_one_step(args, rollout_id, step_id, data_iterator, model, optimizer, o
                 "advantages",
                 "returns",
                 "rollout_log_probs",
+                "truncated",
             ],
         )
 

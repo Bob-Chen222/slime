@@ -314,8 +314,21 @@ def log_rollout_data(rollout_id: int, args: Namespace, rollout_data: RolloutBatc
         loss_masks = rollout_data["loss_masks"]
         total_lengths = rollout_data["total_lengths"]
 
+        # Log truncated sample statistics if available
+        if "truncated" in rollout_data and getattr(args, 'exclude_truncated_samples', False):
+            truncated = rollout_data["truncated"]
+            total_samples = len(truncated)
+            truncated_samples = sum(truncated)
+            truncated_ratio = truncated_samples / max(total_samples, 1)
+            log_dict["truncated_samples"] = truncated_samples
+            log_dict["truncated_ratio"] = truncated_ratio
+            log_dict["valid_samples"] = total_samples - truncated_samples
+            
+            if truncated_ratio > 0.1:  # Log warning if >10% truncated
+                print(f"Warning: Rollout {rollout_id} has {truncated_ratio:.1%} truncated samples ({truncated_samples}/{total_samples})")
+        
         for key, val in rollout_data.items():
-            if key == "tokens" or key == "loss_masks" or key == "sample_indices":
+            if key in ["tokens", "loss_masks", "sample_indices", "truncated"]:
                 continue
             # Upload per sample mean for each rollout value
             # There are the following assumptions:

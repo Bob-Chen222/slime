@@ -473,6 +473,16 @@ def get_slime_extra_args_provider(add_custom_arguments=None):
                     "Note that this may allocate the different response of the same prompt into different training steps."
                 ),
             )
+            parser.add_argument(
+                "--exclude-truncated-samples",
+                action="store_true",
+                default=False,
+                help=(
+                    "Exclude truncated samples from loss computation and weight updates. "
+                    "When enabled, only non-truncated samples contribute to model training, "
+                    "which can improve training quality by avoiding gradient updates from incomplete responses."
+                ),
+            )
 
             parser.add_argument(
                 "--use-dynamic-batch-size",

@@ -478,6 +478,13 @@ def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_
     if args.rollout_num_gpus is not None:
         log_dict["perf/tokens_per_gpu_per_sec"] = sum(response_lengths) / rollout_time / args.rollout_num_gpus
     log_dict["perf/longest_sample_tokens_per_sec"] = max(response_lengths) / rollout_time
+
+    # Add truncated samples ratio metric
+    from slime.utils.types import Sample
+    truncated_samples = [sample for sample in samples if hasattr(sample, 'status') and sample.status == Sample.Status.TRUNCATED]
+    total_samples = len(samples)
+    truncated_ratio = len(truncated_samples) / total_samples if total_samples > 0 else 0.0
+    log_dict["debug/truncated_samples_ratio"] = truncated_ratio
     log_dict |= _compute_zero_std_metrics(args, samples)
     print(f"perf {rollout_id}: {log_dict}")
     step = (

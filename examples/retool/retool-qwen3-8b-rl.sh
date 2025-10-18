@@ -44,26 +44,26 @@ ROLLOUT_ARGS=(
    --reward-key score
    --num-rollout 3000
    --rollout-batch-size 16
-   --n-samples-per-prompt 8
-   --rollout-max-response-len 8192
+   --n-samples-per-prompt 4
+   --rollout-max-response-len 2048
    --rollout-temperature 0.8
 
-   --global-batch-size 128
+   --global-batch-size 64
    --balance-data
 )
 
 EVAL_ARGS=(
    --eval-interval 20
    --eval-prompt-data aime  /root/workspace/aime-2024/aime-2024.jsonl
-   --n-samples-per-eval-prompt 8
-   --eval-max-response-len 8192
+   --n-samples-per-eval-prompt 4
+   --eval-max-response-len 4096
    --eval-top-p 0.7
 )
 
 PERF_ARGS=(
    --tensor-model-parallel-size 4
    --sequence-parallel
-   --pipeline-model-parallel-size 1
+   --pipeline-model-parallel-size 2
    --context-parallel-size 1
    --expert-model-parallel-size 1
    --expert-tensor-parallel-size 1
@@ -104,8 +104,8 @@ WANDB_ARGS=(
 )
 
 SGLANG_ARGS=(
-   --rollout-num-gpus-per-engine 4
-   --sglang-mem-fraction-static 0.6
+   --rollout-num-gpus-per-engine 2
+   --sglang-mem-fraction-static 0.9
 )
 
 MISC_ARGS=(
@@ -117,12 +117,12 @@ MISC_ARGS=(
    --attention-softmax-in-fp32
    # need to comment this when using model with MLA
    --attention-backend flash
-   --exclude-truncated-samples
 )
 
 CUSTOM_ARGS=(
    --custom-generate-function-path generate_with_code_execute.generate
    --custom-rm-path generate_with_code_execute.reward_func
+   --rollout-health-check-timeout 45
 )
 
 # launch the master node of ray in container

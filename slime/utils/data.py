@@ -191,5 +191,9 @@ def process_rollout_data(args, rollout_data_ref, dp_rank, dp_size):
             continue
         val = get_partition(data[key])
         rollout_data[key] = val
+    
+    # Handle index_mapping separately as it's a dictionary, not a list
+    if "index_mapping" in data:
+        rollout_data["index_mapping"] = data["index_mapping"]
 
     return rollout_data

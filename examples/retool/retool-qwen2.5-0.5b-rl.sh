@@ -33,7 +33,7 @@ CKPT_ARGS=(
    --hf-checkpoint /root/workspace/Qwen-weights/Qwen2.5-0.5B-weights
    --ref-load /root/workspace/Qwen-weights/Qwen2.5-0.5B-torch-dist
    --save /root/workspace/Qwen-weights/Qwen2.5-0.5B-iter
-   --save-interval 1
+   --save-interval 4
    # --rotary-base 1000000
 )
 
@@ -140,6 +140,7 @@ CUSTOM_ARGS=(
    --custom-generate-function-path generate_with_code_execute.generate
    --custom-rm-path generate_with_code_execute.reward_func
    --save-eval-debug-rollout-data /root/workspace/logs/eval_{rollout_id}.pt
+   --exclude-truncated-samples
 )
 
 DEBUG_ARGS=(
@@ -170,8 +171,8 @@ ray job submit --address="http://127.0.0.1:8265" \
    ${MODEL_ARGS[@]} \
    ${CKPT_ARGS[@]} \
    ${ROLLOUT_ARGS[@]} \
-   ${OPTIMIZER_ARGS[@]} \
    ${GRPO_ARGS[@]} \
+   ${OPTIMIZER_ARGS[@]} \
    ${DISTRIBUTED_ARGS[@]} \
    ${WANDB_ARGS[@]} \
    ${PERF_ARGS[@]} \
@@ -179,4 +180,5 @@ ray job submit --address="http://127.0.0.1:8265" \
    ${SGLANG_ARGS[@]} \
    ${MISC_ARGS[@]} \
    ${CUSTOM_ARGS[@]} 
+   # ${GRPO_ARGS[@]} \
    # ${DEBUG_ARGS[@]}

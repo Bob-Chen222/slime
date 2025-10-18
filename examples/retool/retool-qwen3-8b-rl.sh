@@ -17,6 +17,7 @@ set -ex
 
 # will prevent ray from buffering stdout/stderr
 export PYTHONBUFFERED=16
+export NUM_GPUS="8"
 
 NVLINK_COUNT=$(nvidia-smi topo -m 2>/dev/null | grep -o 'NV[0-9][0-9]*' | wc -l)
 if [ "$NVLINK_COUNT" -gt 0 ]; then
@@ -32,8 +33,8 @@ source "/root/workspace/slime/scripts/models/qwen3-8B.sh"
 CKPT_ARGS=(
    --hf-checkpoint /root/workspace/Qwen-weights/Qwen3-8B-weights
    --ref-load /root/workspace/Qwen-weights/Qwen3-8B-torch-dist
-   --save /root/workspace/Qwen3-8B-rl/qwen3-8B-rl-multi-turn/
-   --save-interval 5
+   --save /root/workspace/Qwen-weights/Qwen3-8B-iter
+   --save-interval 1
    # --rotary-base 1000000
 )
 
@@ -44,13 +45,13 @@ ROLLOUT_ARGS=(
    --apply-chat-template
    --rollout-shuffle
    --reward-key score
-   --num-rollout 1
-   --rollout-batch-size 16
+   --num-rollout 4
+   --rollout-batch-size 4
    --n-samples-per-prompt 1
-   --rollout-max-response-len 8192
+   --rollout-max-response-len 2048
    --rollout-temperature 0.8
 
-   --global-batch-size 16
+   --global-batch-size 4
    --balance-data
 )
 
@@ -58,7 +59,7 @@ EVAL_ARGS=(
    --eval-interval 1
    --eval-prompt-data apps /root/workspace/synthetic-APPS-emh30.jsonl
    --n-samples-per-eval-prompt 1
-   --eval-max-response-len 8192
+   --eval-max-response-len 2048
    --eval-top-p 0.7
 )
 
@@ -74,9 +75,9 @@ PERF_ARGS=(
    --recompute-method uniform
    --recompute-num-layers 1
 
-   # --micro-batch-size 1
+   # --micro-batch-size 4
    --use-dynamic-batch-size
-   --max-tokens-per-gpu 9216
+   --max-tokens-per-gpu 4096
 )
 
 GRPO_ARGS=(
@@ -96,11 +97,11 @@ PPO_ARGS=(
     --gamma 0.99
     --lambd 0.95
     --normalize-advantages
-    --critic-lr 5e-6
     --entropy-coef 0.01
     --use-kl-loss
     --kl-loss-coef 0.1
     --kl-loss-type low_var_kl
+   #  --critic-lr 5e-6
 )
 
 OPTIMIZER_ARGS=(
@@ -120,7 +121,7 @@ WANDB_ARGS=(
 )
 
 SGLANG_ARGS=(
-   --rollout-num-gpus-per-engine 4
+   --rollout-num-gpus-per-engine $((NUM_GPUS))
    --sglang-mem-fraction-static 0.7
 )
 
@@ -138,16 +139,18 @@ MISC_ARGS=(
 CUSTOM_ARGS=(
    --custom-generate-function-path generate_with_code_execute.generate
    --custom-rm-path generate_with_code_execute.reward_func
+   --save-eval-debug-rollout-data /root/workspace/logs/eval_{rollout_id}.pt
+   # --exclude-truncated-samples
 )
 
-DEBUG_ARGS=(
-   --debug-rollout-only
-   --save-debug-rollout-data /root/workspace/logs/rollout_{rollout_id}.pt
-)
+# DEBUG_ARGS=(
+#    --debug-rollout-only
+#    --save-debug-rollout-data /root/workspace/logs/rollout_{rollout_id}.pt
+# )
 
 # launch the master node of ray in container
 export MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
-ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus 4 --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265
+ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus $NUM_GPUS --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265
 
 # Build the runtime environment JSON with proper variable substitution
 RUNTIME_ENV_JSON="{
@@ -158,23 +161,33 @@ RUNTIME_ENV_JSON="{
   }
 }"
 
+# RUNTIME_ENV_JSON="{
+#   \"env_vars\": {
+#     \"PYTHONPATH\": \"/root/Megatron-LM/:${SCRIPT_DIR}:/root/slime\",
+#     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
+#     \"NCCL_NVLS_ENABLE\": \"0\",
+#     \"NCCL_SHARP_DISABLE\": \"1\",
+#     \"NCCL_DEBUG\": \"INFO\"
+#   }
+# }"
+
 ray job submit --address="http://127.0.0.1:8265" \
    --runtime-env-json="${RUNTIME_ENV_JSON}" \
    -- python3 train.py \
    --actor-num-nodes 1 \
-   --actor-num-gpus-per-node 4 \
+   --actor-num-gpus-per-node $NUM_GPUS \
    --colocate \
    ${MODEL_ARGS[@]} \
    ${CKPT_ARGS[@]} \
    ${ROLLOUT_ARGS[@]} \
    ${OPTIMIZER_ARGS[@]} \
-   # ${GRPO_ARGS[@]} \
-   ${PPO_ARGS[@]} \
+   ${GRPO_ARGS[@]} \
    ${DISTRIBUTED_ARGS[@]} \
    ${WANDB_ARGS[@]} \
    ${PERF_ARGS[@]} \
    ${EVAL_ARGS[@]} \
    ${SGLANG_ARGS[@]} \
    ${MISC_ARGS[@]} \
-   ${CUSTOM_ARGS[@]} \
-   ${DEBUG_ARGS[@]}
+   ${CUSTOM_ARGS[@]} 
+   # ${PPO_ARGS[@]} \
+   # ${DEBUG_ARGS[@]}

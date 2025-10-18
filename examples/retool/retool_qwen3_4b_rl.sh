@@ -27,11 +27,12 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 source "/root/workspace/slime/scripts/models/qwen3-4B.sh"
 
 CKPT_ARGS=(
-   --hf-checkpoint /root/workspace/Qwen3-4B
-   --ref-load /root/workspace/Qwen3-4B-torch-dist
+   --hf-checkpoint /root/workspace/Qwen-weights/Qwen3-4B-weights
+   --ref-load /root/workspace/Qwen-weights/Qwen3-4B-torch-dist
    # --load /root/Qwen3-4B_slime/
-   --save /root/workspace/qwen3-4B-rl
-   --save-interval 1
+   --save /root/workspace/qwen3-4b-sft/qwen3-4b-sft-multi-turn/
+   --save-interval 20
+   --rotary-base 1000000
 )
 
 ROLLOUT_ARGS=(
@@ -41,21 +42,21 @@ ROLLOUT_ARGS=(
    --apply-chat-template
    --rollout-shuffle
    --reward-key score
-   --num-rollout 1
-   --rollout-batch-size 2
+   --num-rollout 3000
+   --rollout-batch-size 32
    --n-samples-per-prompt 8
    --rollout-max-response-len 8192
    --rollout-temperature 0.8
 
-   --global-batch-size 2
+   --global-batch-size 256
    --balance-data
 )
 
 EVAL_ARGS=(
-   --eval-interval 1
+   --eval-interval 20
    --eval-prompt-data aime  /root/workspace/aime-2024/aime-2024.jsonl
-   --n-samples-per-eval-prompt 1
-   --eval-max-response-len 8192
+   --n-samples-per-eval-prompt 16
+   --eval-max-response-len 16384
    --eval-top-p 0.7
 )
 
@@ -116,11 +117,12 @@ MISC_ARGS=(
    --attention-softmax-in-fp32
    # need to comment this when using model with MLA
    --attention-backend flash
+   --exclude-truncated-samples
 )
 
 CUSTOM_ARGS=(
-   --custom-generate-function-path generate_with_retool.generate
-   --custom-rm-path generate_with_retool.reward_func
+   --custom-generate-function-path generate_with_code_execute.generate
+   --custom-rm-path generate_with_code_execute.reward_func
 )
 
 # launch the master node of ray in container
@@ -128,11 +130,21 @@ export MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
 ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus 4 --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265
 
 # Build the runtime environment JSON with proper variable substitution
+# RUNTIME_ENV_JSON="{
+#   \"env_vars\": {
+#     \"PYTHONPATH\": \"/root/Megatron-LM/:${SCRIPT_DIR}:/root/workspace/slime\",
+#     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
+#     \"NCCL_NVLS_ENABLE\": \"${HAS_NVLINK}\"
+#   }
+# }"
+
 RUNTIME_ENV_JSON="{
   \"env_vars\": {
-    \"PYTHONPATH\": \"/root/Megatron-LM/:${SCRIPT_DIR}:/root/workspace/slime\",
+    \"PYTHONPATH\": \"/root/Megatron-LM/:${SCRIPT_DIR}:/root/slime\",
     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
-    \"NCCL_NVLS_ENABLE\": \"${HAS_NVLINK}\"
+    \"NCCL_NVLS_ENABLE\": \"0\",
+    \"NCCL_SHARP_DISABLE\": \"1\",
+    \"NCCL_DEBUG\": \"INFO\"
   }
 }"
 

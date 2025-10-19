@@ -113,9 +113,6 @@ async def _post(client, url, payload, max_retries=60):
         except Exception as e:
             retry_count += 1
             print(f"Error: {e}, retrying... (attempt {retry_count}/{max_retries})")
-            with open("debug_output.txt", "a") as f:
-                print("retry: ", retry_count, file=f)
-                print("payload: ", payload, file=f)
             if retry_count >= max_retries:
                 print(f"Max retries ({max_retries}) reached, failing...")
                 raise e

@@ -187,8 +187,6 @@ class PythonSandbox:
 
     async def execute_code(self, code: str, stdin: str | None = None) -> str:
         """Execute Python code in sandbox with safety checks"""
-        # with open("debug_output.txt", "a") as f:
-        #     f.write(f"enter execution of code in the sand box\n")
         # Check memory usage before execution
         current_memory = get_memory_usage()
         if current_memory > TOOL_CONFIGS["max_memory_usage"]:
@@ -254,8 +252,6 @@ except Exception as e:
     error_msg = f"Error: {{str(e)}}\\nTraceback:\\n{{traceback.format_exc()}}"
     print(error_msg)"""
 
-        # with open("debug_output.txt", "a") as f:
-        #     f.write(f"before creating safe environment\n")
         with self._create_safe_environment() as (script_path, env, temp_dir):
             # Write code to file
             with open(script_path, "w") as f:
@@ -263,8 +259,6 @@ except Exception as e:
 
             try:
                 # Use subprocess to run code
-                # with open("debug_output.txt", "a") as f:
-                #     f.write(f"before launching subprocess\n")
                 stdin_arg = subprocess.PIPE if stdin is not None else None
                 process = subprocess.Popen(
                     ["python3", script_path],
@@ -275,9 +269,6 @@ except Exception as e:
                     cwd=temp_dir,
                     text=True,
                 )
-                # with open("debug_output.txt", "a") as f:
-                #     f.write(f"after launching subprocess\n")
-                #     f.write(f"timeout is {self.timeout}\n")
 
                 # Set timeout
                 try:
@@ -349,15 +340,11 @@ class ToolRegistry:
 
     async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
         """Execute a tool call with the given arguments"""
-        # with open("debug_output.txt", "a") as f:
-        #     f.write(f"execute_tool {tool_name} with arguments {arguments}\n")
         if tool_name not in self.tools:
             return f"Error: Tool '{tool_name}' not found"
 
         async with SEMAPHORE:
             if tool_name == "code_interpreter":
-                # with open("debug_output.txt", "a") as f:
-                #     f.write(f"before executing python code\n")
                 return await self._execute_python(arguments)
             else:
                 return f"Error: Tool '{tool_name}' not implemented"
@@ -365,8 +352,6 @@ class ToolRegistry:
     async def _execute_python(self, arguments: Dict[str, Any]) -> str:
         """Execute Python code using the sandbox"""
         code = arguments.get("code", "")
-        # with open("debug_output.txt", "a") as f:
-        #     f.write("_execute_python\n")
         if not code.strip():
             return "Error: No code provided"
 

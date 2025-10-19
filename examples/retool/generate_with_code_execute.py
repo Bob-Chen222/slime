@@ -451,20 +451,8 @@ async def reward_func(args, sample, **kwargs):
     # Get ground truth answer - label is a string, not a dict
     ground_truth = sample.label if sample.label is not None else ""
 
-    # Get tool call count as num_turns
-    # num_turns = getattr(sample, "tool_call_count", 0)
-
     # use \\boxed{...} answer
     result = compute_score(solution_str, ground_truth, strict_box_verify=True)
-
-    # BOB: disable it to simplify reward function
-    # encourage model to call tools
-    # if result["score"] < 0:
-    #     tool_call_reward = (num_turns - 2) / 2 * 0.1
-    #     result["score"] = min(-0.6, result["score"] + tool_call_reward)
-
-    # if result["pred"] is None:
-    #     result["pred"] = ""
 
     # WARNING: needs to check float or dict is the correct format
     return result

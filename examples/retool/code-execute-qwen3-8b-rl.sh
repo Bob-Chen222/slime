@@ -36,7 +36,7 @@ CKPT_ARGS=(
 )
 
 ROLLOUT_ARGS=(
-   --prompt-data /root/workspace/dapo-math-17k/dapo-math-17k.jsonl
+   --prompt-data /root/workspace/APPS-dataset/APPS-synthetic-train.jsonl
    --input-key prompt
    --label-key label
    --apply-chat-template
@@ -54,7 +54,7 @@ ROLLOUT_ARGS=(
 
 EVAL_ARGS=(
    --eval-interval 20
-   --eval-prompt-data aime  /root/workspace/aime-2024/aime-2024.jsonl
+   --eval-prompt-data apps  /root/workspace/APPS-dataset/APPS-synthetic-test.jsonl
    --n-samples-per-eval-prompt 4
    --eval-max-response-len 4096
    --eval-top-p 0.7

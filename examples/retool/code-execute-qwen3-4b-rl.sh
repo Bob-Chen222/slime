@@ -54,7 +54,7 @@ ROLLOUT_ARGS=(
 
 EVAL_ARGS=(
    --eval-interval 20
-   --eval-prompt-data aime  /root/workspace/APPS-dataset/APPS-synthetic-test.jsonl
+   --eval-prompt-data apps /root/workspace/APPS-dataset/APPS-synthetic-test.jsonl
    --n-samples-per-eval-prompt 8
    --eval-max-response-len 16384
    --eval-top-p 0.7

@@ -30,13 +30,13 @@ CKPT_ARGS=(
    --hf-checkpoint /root/workspace/Qwen-weights/Qwen3-4B-weights
    --ref-load /root/workspace/Qwen-weights/Qwen3-4B-torch-dist
    # --load /root/Qwen3-4B_slime/
-   --save /root/workspace/qwen3-4b-sft/qwen3-4b-sft-multi-turn/
+   --save /root/workspace/qwen3-4b-rl/qwen3-4b-rl-multi-turn/
    --save-interval 20
    --rotary-base 1000000
 )
 
 ROLLOUT_ARGS=(
-   --prompt-data /root/workspace/dapo-math-17k/dapo-math-17k.jsonl
+   --prompt-data /root/workspace/APPS-dataset/APPS-synthetic-train.jsonl
    --input-key prompt
    --label-key label
    --apply-chat-template
@@ -54,8 +54,8 @@ ROLLOUT_ARGS=(
 
 EVAL_ARGS=(
    --eval-interval 20
-   --eval-prompt-data aime  /root/workspace/aime-2024/aime-2024.jsonl
-   --n-samples-per-eval-prompt 16
+   --eval-prompt-data aime  /root/workspace/APPS-dataset/APPS-synthetic-test.jsonl
+   --n-samples-per-eval-prompt 8
    --eval-max-response-len 16384
    --eval-top-p 0.7
 )

@@ -186,7 +186,6 @@ def postprocess_responses(resp: str) -> str:
 
 async def execute_predictions(prediction: str, max_tools_calls_per_turn = 4) -> str:
     """Execute predictions and return results"""
-    # print_eval(f"Executing prediction: {prediction}")
     action, content = postprocess_predictions(prediction)
 
     if action == "code":
@@ -194,8 +193,6 @@ async def execute_predictions(prediction: str, max_tools_calls_per_turn = 4) -> 
         # postprocess_predictions)
         code = content["code"].strip() if isinstance(content, dict) else str(content).strip()
         stdin_value = content.get("stdin") if isinstance(content, dict) else None
-        # print_eval(f"Extracted code: {code}")
-        # print_eval(f"Extracted stdin: {stdin_value}")
         if code:
             # TODO BOB: this will create a deadlock!!!
             async with SEMAPHORE:
@@ -203,7 +200,6 @@ async def execute_predictions(prediction: str, max_tools_calls_per_turn = 4) -> 
                 if stdin_value is not None:
                     args["stdin"] = stdin_value
                 result = await tool_registry.execute_tool("code_interpreter", args)
-                # print_eval(f"Execution result: {result}")
 
             next_obs = f"\n\n<interpreter>\n{result}\n</interpreter>\n\n"
             done = False
@@ -215,20 +211,16 @@ async def execute_predictions(prediction: str, max_tools_calls_per_turn = 4) -> 
         results = []
         for i, (act, cont) in enumerate(content):
             if i >= max_tools_calls_per_turn:
-                print_eval(f"Maximum tool call per turn {max_tools_calls_per_turn} reached, skipping remaining calls.")
                 break
             if act == "code":
                 code = cont["code"].strip() if isinstance(cont, dict) else str(cont).strip()
                 stdin_value = cont.get("stdin") if isinstance(cont, dict) else None
-                # print_eval(f"Extracted code: {code}")
-                # print_eval(f"Extracted stdin: {stdin_value}")
                 if code:
                     async with SEMAPHORE:
                         args = {"code": code}
                         if stdin_value is not None:
                             args["stdin"] = stdin_value
                         result = await tool_registry.execute_tool("code_interpreter", args)
-                        # print_eval(f"Execution result: {result}")
                     results.append(f"<interpreter>\n{result}\n</interpreter>")
                 else:
                     results.append("<interpreter>\nError: No Python code found\n</interpreter>")
@@ -277,7 +269,8 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
         print_eval(f"=== Turn {turn} ===")
         print_eval(f"response so far: {response}")
 
-        ctx_len = 40960
+        # BOB: hardcoded otherwise https will complain and have no fallback and will cause program to abort
+        ctx_len = 40959
         # if not ctx_len or ctx_len <= 0:
         #     ctx_len = getattr(state.tokenizer, "model_max_length", 40960)
 

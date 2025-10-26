@@ -29,7 +29,7 @@ source "/root/workspace/slime/scripts/models/qwen3-4B.sh"
 CKPT_ARGS=(
    --hf-checkpoint /root/workspace/Qwen-weights/Qwen3-4B-weights
    --ref-load /root/workspace/Qwen-weights/Qwen3-4B-torch-dist
-   # --load /root/Qwen3-4B_slime/
+   --load /root/workspace/qwen3-4b-rl/qwen3-4b-rl-multi-turn/
    --save /root/workspace/qwen3-4b-rl/qwen3-4b-rl-multi-turn/
    --save-interval 20
    --rotary-base 1000000
@@ -55,8 +55,8 @@ ROLLOUT_ARGS=(
 EVAL_ARGS=(
    --eval-interval 20
    --eval-prompt-data apps /root/workspace/APPS-dataset/APPS-synthetic-test.jsonl
-   --n-samples-per-eval-prompt 8
-   --eval-max-response-len 16384
+   --n-samples-per-eval-prompt 1
+   --eval-max-response-len 8192
    --eval-top-p 0.7
 )
 

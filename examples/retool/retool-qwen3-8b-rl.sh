@@ -24,44 +24,46 @@ fi
 echo "HAS_NVLINK: $HAS_NVLINK (detected $NVLINK_COUNT NVLink references)"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-source "${SCRIPT_DIR}/../../scripts/models/qwen3-4B.sh"
+source "/root/workspace/slime/scripts/models/qwen3-8B.sh"
 
 CKPT_ARGS=(
-   --hf-checkpoint /root/Qwen3-4B
-   #--hf-checkpoint /root/Qwen3-4B-FP8
-   --ref-load /root/Qwen3-4B_torch_dist
-   --load /root/Qwen3-4B_slime/
-   --save /root/Qwen3-4B_slime/
+   --hf-checkpoint /root/workspace/Qwen-weights/Qwen3-8B-weights
+   --ref-load /root/workspace/Qwen-weights/Qwen3-8B-torch-dist
+   # --load /root/Qwen3-4B_slime/
+   --save /root/workspace/qwen3-8b-rl-multi-turn/
    --save-interval 20
+   --rotary-base 1000000
 )
 
-PROMPT_SET=/path/to/dapo-math-17k.jsonl
-
 ROLLOUT_ARGS=(
-   --rollout-function-path fully_async_rollout.generate_rollout_fully_async
-   --prompt-data ${PROMPT_SET}
+   --prompt-data /root/workspace/dapo-math-17k/dapo-math-17k.jsonl
    --input-key prompt
    --label-key label
    --apply-chat-template
    --rollout-shuffle
-
-   --rm-type dapo
    --reward-key score
-
    --num-rollout 3000
-   --rollout-batch-size 32
-   --n-samples-per-prompt 8
-   --rollout-max-response-len 8192
+   --rollout-batch-size 16
+   --n-samples-per-prompt 4
+   --rollout-max-response-len 2048
    --rollout-temperature 0.8
 
-   --global-batch-size 256
+   --global-batch-size 64
    --balance-data
 )
 
+EVAL_ARGS=(
+   --eval-interval 20
+   --eval-prompt-data aime  /root/workspace/aime-2024/aime-2024.jsonl
+   --n-samples-per-eval-prompt 4
+   --eval-max-response-len 4096
+   --eval-top-p 0.7
+)
+
 PERF_ARGS=(
-   --tensor-model-parallel-size 2
+   --tensor-model-parallel-size 4
    --sequence-parallel
-   --pipeline-model-parallel-size 1
+   --pipeline-model-parallel-size 2
    --context-parallel-size 1
    --expert-model-parallel-size 1
    --expert-tensor-parallel-size 1
@@ -83,8 +85,6 @@ GRPO_ARGS=(
    --entropy-coef 0.00
    --eps-clip 0.2
    --eps-clip-high 0.28
-
-   --use-tis
 )
 
 OPTIMIZER_ARGS=(
@@ -96,8 +96,16 @@ OPTIMIZER_ARGS=(
    --adam-beta2 0.98
 )
 
+WANDB_ARGS=(
+   --use-wandb
+   --wandb-project slime-dapo
+   --wandb-group qwen3-8B-test-multi-turn
+   --wandb-key ${WANDB_KEY}
+)
+
 SGLANG_ARGS=(
-   --rollout-num-gpus-per-engine 1
+   --rollout-num-gpus-per-engine 2
+   --sglang-mem-fraction-static 0.9
 )
 
 MISC_ARGS=(
@@ -111,29 +119,49 @@ MISC_ARGS=(
    --attention-backend flash
 )
 
+CUSTOM_ARGS=(
+   --custom-generate-function-path generate_with_retool.generate
+   --custom-rm-path generate_with_retool.reward_func
+   --rollout-health-check-timeout 45
+)
+
 # launch the master node of ray in container
 export MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
-ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus 8 --disable-usage-stats
+ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus 8 --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265
+
+# Build the runtime environment JSON with proper variable substitution
+# RUNTIME_ENV_JSON="{
+#   \"env_vars\": {
+#     \"PYTHONPATH\": \"/root/Megatron-LM/:${SCRIPT_DIR}:/root/workspace/slime\",
+#     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
+#     \"NCCL_NVLS_ENABLE\": \"${HAS_NVLINK}\"
+#   }
+# }"
 
 RUNTIME_ENV_JSON="{
   \"env_vars\": {
-    \"PYTHONPATH\": \"/root/Megatron-LM/:${SCRIPT_DIR}\",
+    \"PYTHONPATH\": \"/root/Megatron-LM/:${SCRIPT_DIR}:/root/slime\",
     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
-    \"NCCL_NVLS_ENABLE\": \"${HAS_NVLINK}\"
+    \"NCCL_NVLS_ENABLE\": \"0\",
+    \"NCCL_SHARP_DISABLE\": \"1\",
+    \"NCCL_DEBUG\": \"INFO\"
   }
 }"
 
 ray job submit --address="http://127.0.0.1:8265" \
    --runtime-env-json="${RUNTIME_ENV_JSON}" \
-   -- python3 train_async.py \
+   -- python3 train.py \
    --actor-num-nodes 1 \
-   --actor-num-gpus-per-node 4 \
-   --rollout-num-gpus 4 \
+   --actor-num-gpus-per-node 8 \
+   --colocate \
    ${MODEL_ARGS[@]} \
    ${CKPT_ARGS[@]} \
    ${ROLLOUT_ARGS[@]} \
    ${OPTIMIZER_ARGS[@]} \
    ${GRPO_ARGS[@]} \
+   ${WANDB_ARGS[@]} \
    ${PERF_ARGS[@]} \
+   ${EVAL_ARGS[@]} \
    ${SGLANG_ARGS[@]} \
-   ${MISC_ARGS[@]}
+   ${MISC_ARGS[@]} \
+   ${CUSTOM_ARGS[@]}

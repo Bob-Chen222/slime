@@ -645,18 +645,12 @@ def loss_function(
     """
     num_tokens = sum([torch.clamp_min(loss_mask.sum(), 1) for loss_mask in batch["loss_masks"]])
     num_samples = len(batch["response_lengths"])
-
-    # Handle truncated sample exclusion
-    exclude_truncated = getattr(args, 'exclude_truncated_samples', False)
-    truncated = batch.get("truncated", None)
     
     sum_of_sample_mean = get_sum_of_sample_mean(
         batch["total_lengths"],
         batch["response_lengths"],
         batch["loss_masks"],
         args.calculate_per_token_loss,
-        truncated=truncated,
-        exclude_truncated=exclude_truncated,
     )
 
     loss_function_kwargs = {

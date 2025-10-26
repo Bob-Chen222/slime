@@ -49,68 +49,45 @@ def get_sum_of_sample_mean(
     response_lengths: list[int],
     loss_masks: list[torch.Tensor],
     calculate_per_token_loss: bool = False,
-    truncated: list[int] = None,
-    exclude_truncated: bool = False,
 ) -> Callable[[torch.Tensor], torch.Tensor]:
     """
-    Calculate correct sample mean for CP, with optional truncated sample exclusion
+    Calculate correct sample mean for CP
     """
     cp_size = mpu.get_context_parallel_world_size()
-    
-    # Prepare truncation masks
-    if exclude_truncated and truncated is not None:
-        # Create masks to zero out contributions from truncated samples
-        truncation_masks = [torch.tensor(1.0 - t, device=loss_mask.device, dtype=loss_mask.dtype) 
-                          for t, loss_mask in zip(truncated, loss_masks)]
-        valid_sample_count = sum(1 - t for t in truncated)
-        # Avoid division by zero
-        if valid_sample_count == 0:
-            valid_sample_count = 1
-    else:
-        truncation_masks = [torch.tensor(1.0, device=loss_mask.device, dtype=loss_mask.dtype) 
-                          for loss_mask in loss_masks]
-        valid_sample_count = len(loss_masks)
-    
     if cp_size == 1:
 
         def sum_of_sample_mean(x: torch.Tensor) -> torch.Tensor:
             return sum(
                 [
-                    (x_i * loss_mask_i * trunc_mask).sum() / torch.clamp_min(loss_mask_i.sum() * trunc_mask, 1)
-                    for x_i, loss_mask_i, trunc_mask in zip(x.split(response_lengths, dim=0), loss_masks, truncation_masks)
+                    (x_i * loss_mask_i).sum() / torch.clamp_min(loss_mask_i.sum(), 1)
+                    for x_i, loss_mask_i in zip(x.split(response_lengths, dim=0), loss_masks)
                 ]
             )
 
         def sum_of_token(x: torch.Tensor) -> torch.Tensor:
             return sum(
-                [(x_i * loss_mask_i * trunc_mask).sum() 
-                 for x_i, loss_mask_i, trunc_mask in zip(x.split(response_lengths, dim=0), loss_masks, truncation_masks)]
+                [(x_i * loss_mask_i).sum() for x_i, loss_mask_i in zip(x.split(response_lengths, dim=0), loss_masks)]
             )
 
     else:
         cp_chunk_lengths = []
         chunked_loss_masks = []
-        chunked_truncation_masks = []
-        for i, (total_length, response_length, loss_mask, trunc_mask) in enumerate(
-            zip(total_lengths, response_lengths, loss_masks, truncation_masks)
+        for i, (total_length, response_length, loss_mask) in enumerate(
+            zip(total_lengths, response_lengths, loss_masks)
         ):
             prompt_length = total_length - response_length
             _, _, _, tokens_offset = get_logits_and_tokens_offset_with_cp(total_length, response_length)
             loss_mask_0 = loss_mask[tokens_offset[0][0] - prompt_length : tokens_offset[0][1] - prompt_length]
             loss_mask_1 = loss_mask[tokens_offset[1][0] - prompt_length : tokens_offset[1][1] - prompt_length]
             chunked_loss_masks.append(torch.cat([loss_mask_0, loss_mask_1], dim=0))
-            
-            # Extend truncation mask for chunked computation
-            trunc_mask_extended = torch.full_like(torch.cat([loss_mask_0, loss_mask_1], dim=0), trunc_mask.item())
-            chunked_truncation_masks.append(trunc_mask_extended)
             cp_chunk_lengths.append(chunked_loss_masks[i].size(0))
 
         def sum_of_sample_mean(x: torch.Tensor) -> torch.Tensor:
             return sum(
                 [
-                    (x_i * chunked_loss_mask * chunked_trunc_mask).sum() / torch.clamp_min(loss_mask.sum() * trunc_mask, 1)
-                    for x_i, chunked_loss_mask, chunked_trunc_mask, loss_mask, trunc_mask in zip(
-                        x.split(cp_chunk_lengths, dim=0), chunked_loss_masks, chunked_truncation_masks, loss_masks, truncation_masks
+                    (x_i * chunked_loss_mask).sum() / torch.clamp_min(loss_mask.sum(), 1)
+                    for x_i, chunked_loss_mask, loss_mask in zip(
+                        x.split(cp_chunk_lengths, dim=0), chunked_loss_masks, loss_masks
                     )
                 ]
             )
@@ -118,8 +95,8 @@ def get_sum_of_sample_mean(
         def sum_of_token(x: torch.Tensor) -> torch.Tensor:
             return sum(
                 [
-                    (x_i * chunked_loss_mask * chunked_trunc_mask).sum()
-                    for x_i, chunked_loss_mask, chunked_trunc_mask in zip(x.split(cp_chunk_lengths, dim=0), chunked_loss_masks, chunked_truncation_masks)
+                    (x_i * chunked_loss_mask).sum()
+                    for x_i, chunked_loss_mask in zip(x.split(cp_chunk_lengths, dim=0), chunked_loss_masks)
                 ]
             )
 

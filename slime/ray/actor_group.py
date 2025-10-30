@@ -59,9 +59,10 @@ class RayTrainGroup:
             # we need also set it to 0 to prevent nccl error.
             "NCCL_CUMEM_ENABLE": "0",
             **{name: "1" for name in NOSET_VISIBLE_DEVICES_ENV_VARS_LIST},
+            **self.args.train_env_vars,
         }
 
-        if self.args.offload_train:
+        if self.args.offload_train and self.args.offload_train_mode == "tms":
             import torch_memory_saver
 
             dynlib_path = os.path.join(

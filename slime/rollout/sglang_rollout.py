@@ -521,7 +521,7 @@ async def eval_rollout_single_dataset(
 
     reward_key = args.eval_reward_key or args.reward_key
 
-    _save_debug_rollout_data(args, data, rollout_id)
+    # _save_debug_rollout_data(args, data, rollout_id)
 
     # TODO (Bob): needs to add a utility function or organize this function better. only temp for now
     tp = sum(
@@ -574,19 +574,19 @@ async def eval_rollout_single_dataset(
         }
     }
 
-def _save_debug_rollout_data(args, data, rollout_id):
-        # TODO to be refactored (originally Buffer._set_data)
-        if (path_template := args.save_eval_debug_rollout_data) is not None:
-            path = Path(path_template.format(rollout_id=rollout_id))
-            print(f"Save eval debug rollout data to {path}")
-            path.parent.mkdir(parents=True, exist_ok=True)
-            torch.save(
-                dict(
-                    rollout_id=rollout_id,
-                    samples=[sample.to_dict() for sample in data],
-                ),
-                path,
-            )
+# def _save_debug_rollout_data(args, data, rollout_id):
+#         # TODO to be refactored (originally Buffer._set_data)
+#         if (path_template := args.save_eval_debug_rollout_data) is not None:
+#             path = Path(path_template.format(rollout_id=rollout_id))
+#             print(f"Save eval debug rollout data to {path}")
+#             path.parent.mkdir(parents=True, exist_ok=True)
+#             torch.save(
+#                 dict(
+#                     rollout_id=rollout_id,
+#                     samples=[sample.to_dict() for sample in data],
+#                 ),
+#                 path,
+#             )
 
 
 

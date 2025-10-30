@@ -48,6 +48,10 @@ ROLLOUT_ARGS=(
    --rollout-max-response-len 8192
    --rollout-temperature 0.8
 
+   # Dynamic sampling with truncation filtering
+   --over-sampling-batch-size 48
+   --dynamic-sampling-filter-path slime.rollout.filter_hub.dynamic_sampling_filters.filter_truncated_samples
+
    --global-batch-size 256
    --balance-data
 )
@@ -117,7 +121,7 @@ MISC_ARGS=(
    --attention-softmax-in-fp32
    # need to comment this when using model with MLA
    --attention-backend flash
-   --exclude-truncated-samples
+   # --exclude-truncated-samples
 )
 
 CUSTOM_ARGS=(

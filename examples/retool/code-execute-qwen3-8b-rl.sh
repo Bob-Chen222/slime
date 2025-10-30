@@ -43,12 +43,16 @@ ROLLOUT_ARGS=(
    --rollout-shuffle
    --reward-key score
    --num-rollout 3000
-   --rollout-batch-size 16
-   --n-samples-per-prompt 4
-   --rollout-max-response-len 2048
+   --rollout-batch-size 32
+   --n-samples-per-prompt 8
+   --rollout-max-response-len 8192
    --rollout-temperature 0.8
 
-   --global-batch-size 64
+   # Dynamic sampling with truncation filtering
+   --over-sampling-batch-size 48
+   --dynamic-sampling-filter-path slime.rollout.filter_hub.dynamic_sampling_filters.filter_truncated_samples
+
+   --global-batch-size 256
    --balance-data
 )
 

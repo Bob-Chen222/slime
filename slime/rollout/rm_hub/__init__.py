@@ -54,6 +54,10 @@ async def async_rm(args, sample: Sample, **kwargs):
         return f1_score(response, label)[0]
     elif rm_type == "gpqa":
         return compute_gpqa_reward(response, label, metadata=metadata)
+    elif rm_type == "ifbench":
+        from .ifbench import compute_ifbench_reward
+
+        return compute_ifbench_reward(response, label, metadata=metadata)
     elif rm_type:
         raise NotImplementedError(f"Rule-based RM for {rm_type} is not implemented.")
     else:

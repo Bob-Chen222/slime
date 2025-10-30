@@ -4,7 +4,7 @@ import time
 from argparse import Namespace
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional
 
 import ray
 import torch
@@ -25,6 +25,7 @@ from slime.utils.timer import Timer, timer
 from slime.utils.types import RolloutBatch
 from slime.utils.wandb_utils import init_wandb_secondary
 
+from ...utils.profile_utils import TrainProfiler
 from .checkpoint import load_checkpoint
 from .cp_utils import slice_log_prob_with_cp
 from .data import DataIterator, get_data_iterator, log_perf_data, log_rollout_data, sync_actor_critic_data
@@ -74,7 +75,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         if role == "critic":
             if self.args.offload_train:
-                self.sleep(("model"))
+                self.sleep()
             Timer().start("train_wait")
             return
 
@@ -109,7 +110,7 @@ class MegatronTrainRayActor(TrainRayActor):
         if self.args.offload_train:
             # recover to actor in the end.
             self.update_gpu_params_dict(self.weights["actor"])
-            self.sleep(("model"))
+            self.sleep()
 
         self.rollout_engines = None
 
@@ -119,22 +120,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
             self.rollout_data_postprocess = load_function(self.args.rollout_data_postprocess_path)
 
-        self.prof = None
-        if args.use_pytorch_profiler and torch.distributed.get_rank() == 0:
-            self.prof = torch.profiler.profile(
-                schedule=torch.profiler.schedule(
-                    wait=max(args.profile_step_start - 1, 0),
-                    warmup=1 if args.profile_step_start > 0 else 0,
-                    active=args.profile_step_end - args.profile_step_start,
-                    repeat=1,
-                ),
-                on_trace_ready=torch.profiler.tensorboard_trace_handler(args.tensorboard_dir),
-                record_shapes=True,
-                with_stack=True,
-                profile_memory=True,
-                with_flops=True,
-            )
-            self.prof.start()
+        self.prof = TrainProfiler(args)
 
         Timer().start("train_wait")
         return start_rollout_id
@@ -155,11 +141,8 @@ class MegatronTrainRayActor(TrainRayActor):
         torch.cuda.synchronize()
 
     @timer
-    def sleep(self, tags: Union[str, Tuple[str, ...]]) -> None:
+    def sleep(self) -> None:
         assert self.args.offload_train
-        assert "model" in tags
-        if isinstance(tags, str):
-            tags = (tags,)
 
         clear_memory()
         print_memory("before offload model")
@@ -170,7 +153,7 @@ class MegatronTrainRayActor(TrainRayActor):
         print_memory("after offload model")
 
     @timer
-    def wake_up(self, tags: Union[str, Tuple[str, ...]]) -> None:
+    def wake_up(self) -> None:
         assert self.args.offload_train
 
         # there are weird times when sglang is not offloaded immediately, so we wait here.
@@ -181,9 +164,6 @@ class MegatronTrainRayActor(TrainRayActor):
                 time.sleep(1)
                 continue
             break
-
-        if isinstance(tags, str):
-            tags = (tags,)
 
         torch_memory_saver.resume()
 
@@ -244,7 +224,7 @@ class MegatronTrainRayActor(TrainRayActor):
         Timer().end("train_wait")
 
         if self.args.offload_train:
-            self.wake_up(("model"))
+            self.wake_up()
 
         with timer("data_preprocess"):
             rollout_data = self._get_rollout_data(rollout_data_ref)
@@ -337,8 +317,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
             log_rollout_data(rollout_id, self.args, rollout_data)
 
-            if self.args.use_pytorch_profiler and torch.distributed.get_rank() == 0 and self.prof is not None:
-                self.prof.step()
+            self.prof.before_actor_train_step()
 
             # Train
             if self.args.use_routing_replay:
@@ -353,15 +332,7 @@ class MegatronTrainRayActor(TrainRayActor):
                     num_microbatches,
                 )
 
-            # Profiling.
-            if (
-                self.args.use_pytorch_profiler
-                and rollout_id == self.args.profile_step_end
-                and torch.distributed.get_rank() == 0
-                and self.prof is not None
-            ):
-                self.prof.stop()
-                self.prof = None
+            self.prof.after_actor_train_step(rollout_id=rollout_id)
 
         # TODO extract to a function during refactor
         if (path_template := self.args.save_debug_train_data) is not None:

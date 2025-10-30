@@ -99,6 +99,8 @@ class RolloutManager:
             if monitor_started:
                 self._health_monitor.stop()
                 self.num_new_engines = init_rollout_engines(self.args, self.pg, self.all_rollout_engines)
+            else:
+                self.num_new_engines = 0
 
     def eval(self, rollout_id):
         if self.args.debug_train_only:
@@ -491,7 +493,7 @@ def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_
         sum(sample.loss_mask) if sample.loss_mask is not None else sample.response_length for sample in samples
     ]
     log_dict["perf/rollout_time"] = rollout_time
-    if args.rollout_num_gpus is not None:
+    if args.rollout_num_gpus:
         log_dict["perf/tokens_per_gpu_per_sec"] = sum(response_lengths) / rollout_time / args.rollout_num_gpus
     log_dict["perf/longest_sample_tokens_per_sec"] = max(response_lengths) / rollout_time
 
